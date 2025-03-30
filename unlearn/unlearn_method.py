@@ -40,15 +40,3 @@ class UnLearnDataset(Dataset):
             data = self.retain_data[index - self.forget_len]
             unlearn_label = 0
             return data, unlearn_label
-
-class SimpleDataset(Dataset):
-    def __init__(self, data, targets) -> None:
-        super().__init__()
-        self.data = data 
-        self.targets = targets 
-
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, index):
-        return (self.data[index], self.targets[index])
