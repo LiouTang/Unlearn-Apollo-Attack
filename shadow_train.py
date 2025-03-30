@@ -1,6 +1,9 @@
 import os
+import sys
+import random
 import argparse
-# from datetime import datetime
+import numpy as np
+import pickle as pkl
 
 import torch
 import torch.nn as nn
@@ -14,12 +17,13 @@ from dataset import create_dataset
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
 def main():
-    parser = argparse.ArgumentParser(description='Pretraining Config')
+    parser = argparse.ArgumentParser(description='Shadow Models Pretrain Config')
     parser.add_argument('--data_dir',       type=str,   default='./data',   help='path to dataset')
     parser.add_argument('--dataset',        type=str,   default='',         help='dataset type (default: ImageFolder/ImageTar if empty)')
     parser.add_argument('--size_train',     type=int,   default=2500,       help='train set size (default: 2500)')
+    parser.add_argument('--size_shadow',    type=int,   default=2500,       help='size of shadow sets (default: 2500)')
+    parser.add_argument('--num_shadow',     type=int,   default=16,         help='number of shadow models (default: 16)')
 
     parser.add_argument('--model',          type=str,   default='ResNet18', help='Name of model to train (default: "resnet50"')
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
@@ -39,49 +43,52 @@ def main():
 
 
     utils.random_seed(args.seed)
-    save_path = os.path.join("./save", f"{args.model}-{args.dataset}-{str(args.size_train)}")
+    save_path = os.path.join("./save", f"{args.model}-{args.dataset}-{str(args.size_train)}", "shadow")
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-    weights_path = os.path.join(save_path, "original.pth.tar")
 
     # dataloaders
     dataset = create_dataset(dataset_name=args.dataset, setting="Partial", root=args.data_dir, img_size=args.input_size[-1])
-    dataset.set_train_shadow_idx(size_train=args.size_train)
+    dataset.set_train_shadow_idx(size_train=args.size_train, size_shadow=args.size_shadow, num_shadow=args.num_shadow)
 
-    trainset = dataset.get_subset(dataset.train_dataset, dataset.train_idx)
     testset = dataset.valid_dataset
 
-    trainloader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     testloader = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-    # get network
-    model = create_model(model_name=args.model, num_classes=args.num_classes)
-    model.to(DEVICE)
-
+    # training
     loss_function = nn.CrossEntropyLoss()
-    if args.opt == "sgd":
+    for i in range(args.num_shadow):
+        weights_path = os.path.join(save_path, f"{i}.pth.tar")
+
+        print(len(dataset.shadow_idx_collection[i]), dataset.shadow_idx_collection[i])
+        shadow_dataset = dataset.get_subset(dataset.train_dataset, dataset.shadow_idx_collection[i])
+        shadow_loader = DataLoader(shadow_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+        model = create_model(model_name=args.model, num_classes=args.num_classes)
+        model.to(DEVICE)
+
         optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-    elif args.opt == "adamw":
-        optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    if args.sched == "cosine":
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
-    best_acc = None 
-    best_epoch = None 
-    for epoch in range(1, args.epochs + 1):
-        train_metrics = train(epoch, trainloader, model, loss_function, optimizer)
-        eval_metrics = validate(testloader, model, loss_function)
-        scheduler.step()
-        utils.update_summary(
-            epoch, train_metrics, eval_metrics, os.path.join(save_path, "summary.csv"),
-            write_header=best_acc is None,
-        )
-        if best_acc is None or best_acc < eval_metrics["top1"]:
-            print("saving weights file to {}".format(weights_path))
-            torch.save(model.state_dict(), weights_path)
-            best_acc = eval_metrics["top1"]
-            best_epoch = epoch
-    print('*** Best metric: {0} (epoch {1})'.format(best_acc, best_epoch))
+        best_acc = None
+        best_epoch = None
+        for epoch in range(1, args.epochs + 1):
+            train_metrics = train(epoch, shadow_loader, model, loss_function, optimizer)
+            eval_metrics = validate(shadow_loader, model, loss_function)
+            scheduler.step()
+
+            if best_acc is None or best_acc < eval_metrics["top1"]:
+                print("saving weights file to {}".format(weights_path))
+                torch.save(model.state_dict(), weights_path)
+                best_acc = eval_metrics["top1"]
+                best_epoch = epoch
+        print('*** Best metric: {0} (epoch {1})'.format(best_acc, best_epoch))
+
+    data_split = {
+        "train":        dataset.train_idx,
+        "shadow_col":   dataset.shadow_idx_collection,
+    }
+    with open(os.path.join(save_path, "data_split.pkl"), "wb") as f:
+        pkl.dump(data_split, f)
 
 
 if __name__ == '__main__':

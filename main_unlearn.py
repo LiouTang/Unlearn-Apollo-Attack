@@ -24,7 +24,7 @@ def main():
     parser = argparse.ArgumentParser(description='Unlearn Config')
     parser.add_argument('--data_dir',       type=str,   default='./data',   help='path to dataset')
     parser.add_argument('--dataset',        type=str,   default='',         help='dataset type (default: ImageFolder/ImageTar if empty)')
-    parser.add_argument('--size_train',     type=int,   default=2500,       help='train set size')
+    parser.add_argument('--size_train',     type=int,   default=2500,       help='train set size (default: 2500)')
 
     parser.add_argument('--model',          type=str,   default='ResNet18', help='Name of model to train (default: "resnet50"')
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
@@ -32,16 +32,15 @@ def main():
     parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
     parser.add_argument('--checkpoint',     type=str,   default='',         help='Initialize model from this checkpoint (default: none)')
 
-    parser.add_argument('--seed',           type=int,   default=42,         help='random seed (default: 42)')
-
     parser.add_argument("--unlearn",        type=str,   required=True,      help="select unlearning method from choice set")
     parser.add_argument("--forget_perc",    type=float, default=None,       help="forget random subset percentage")
     parser.add_argument("--forget_class",   type=int,   default=None,       help="forget class")
+
+    parser.add_argument('--seed',           type=int,   default=42,         help='random seed (default: 42)')
     args = parser.parse_args()
 
 
     utils.random_seed(args.seed)
-
     save_path = os.path.join("./save",
                              f"{args.model}-{args.dataset}-{str(args.size_train)}",
                              f"perc-{str(args.forget_perc)}-class-{str(args.forget_class)}",
@@ -68,11 +67,6 @@ def main():
         retain_train=retain_trainloader,
         forget_valid=None,
         retain_valid=testloader
-    )
-    unlearn_sets = OrderedDict(
-        forget_train=forget_trainset,
-        retain_train=retain_trainset,
-        retain_valid=testset
     )
 
     # get network
