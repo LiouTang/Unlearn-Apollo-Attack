@@ -13,10 +13,10 @@ from .unlearn_method import UnlearnMethod, UnLearnDataset
 from models import create_model
 from trainer import train, validate
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def DistillLoss(
-    outputs, unlearn_labels, full_teacher_logits, unlearning_teacher_logits, KL_temperature
-):
+
+def DistillLoss(outputs, unlearn_labels, full_teacher_logits, unlearning_teacher_logits, KL_temperature):
     unlearn_labels = torch.unsqueeze(unlearn_labels, dim=1)
 
     f_teacher_out = F.softmax(full_teacher_logits / KL_temperature, dim=1)
@@ -66,7 +66,7 @@ class BadTeacher(UnlearnMethod):
         self.unlearn_dataloader = DataLoader(self.unlearning_data, batch_size=self.batch_size, shuffle=True, num_workers=4)
         self.full_teacher = deepcopy(self.model)
         self.unlearning_teacher = create_model(model_name=self.model_name, num_classes=self.num_classes)
-        self.unlearning_teacher.cuda()
+        self.unlearning_teacher.to(DEVICE)
 
     def get_unlearned_model(self) -> nn.Module:
 
@@ -94,9 +94,8 @@ class BadTeacher(UnlearnMethod):
                 self.full_teacher.eval() 
                 self.unlearning_teacher.eval() 
                 images, labels = data
-                labels = labels.cuda()
-                images = images.cuda()
-                unlearn_labels = unlearn_labels.cuda()
+                images, labels, unlearn_labels = images.to(DEVICE), labels.to(DEVICE), unlearn_labels.to(DEVICE)
+                
                 with torch.no_grad():
                     full_teacher_logits = self.full_teacher(images)
                     unlearning_teacher_logits = self.unlearning_teacher(images)

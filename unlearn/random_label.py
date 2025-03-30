@@ -13,6 +13,8 @@ import utils
 from .unlearn_method import UnlearnMethod, UnLearnDataset
 from trainer import validate
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 class RandomLabel(UnlearnMethod):
     def __init__(self, model, loss_function, save_path, args) -> None:
@@ -87,12 +89,11 @@ class RandomLabel(UnlearnMethod):
             for i, (data, unlearn_labels) in enumerate(self.unlearn_dataloader):
                 self.model.train() 
                 images, labels = data
-                labels = labels.cuda()
-                images = images.cuda()
+                images, labels = images.to(DEVICE), labels.to(DEVICE)
 
                 optimizer.zero_grad()
                 outputs = self.model(images)
-                loss = self.loss_function(outputs, labels)
+                loss = self.loss_function(outputs, labels.to(torch.int64))
                 loss.backward()
                 optimizer.step()
 

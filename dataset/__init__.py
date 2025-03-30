@@ -1,7 +1,7 @@
 from .cifar10 import PretrainCIFAR10, FullClassUnlearnCIFAR10, RandomUnlearnCIFAR10
-from .cifar100 import PretrainCIFAR100, FullClassUnlearnCIFAR100, RandomUnlearnCIFAR100
-from .SVHN import PretrainSVHN, FullClassUnlearnSVHN, RandomUnlearnSVHN
-from .tinyimagenet import PretrainTinyImageNet, RandomUnlearnTinyImageNet
+# from .cifar100 import PretrainCIFAR100, FullClassUnlearnCIFAR100, RandomUnlearnCIFAR100
+# from .SVHN import PretrainSVHN, FullClassUnlearnSVHN, RandomUnlearnSVHN
+from .toydata import PretrainToyData, RandomUnlearnToyData
 
 
 def create_dataset(dataset_name, setting, root, img_size=32):

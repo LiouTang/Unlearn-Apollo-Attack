@@ -31,7 +31,7 @@ def collect_prob(data_loader, model):
             batch = [tensor.to(next(model.parameters()).device) for tensor in batch]
             data, target = batch
             output = model(data)
-            loss = F.cross_entropy(output, target, reduction="none") 
+            loss = F.cross_entropy(output, target.to(torch.int64), reduction="none") 
             # print(loss)
             prob.append(F.softmax(output, dim=-1).data)
             targets.append(target)

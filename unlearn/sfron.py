@@ -10,6 +10,8 @@ import utils
 from .unlearn_method import UnlearnMethod
 from trainer import validate
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 def cycle(dl):
     while True:
@@ -53,7 +55,7 @@ class AdaptiveLoss(torch.nn.Module):
         self.reduction = reduction
 
     def forward(self, predict, target):
-        ori_loss = self.loss_function(predict, target)
+        ori_loss = self.loss_function(predict, target.to(torch.int64))
         coef = 1 / (torch.pow(ori_loss.detach().clone(), self.lambd) + 1e-15)
         # print((coef / coef.sum()).sum(), ((coef / coef.sum())* predict.shape[0]).sum()) 
         ad_loss = (coef / coef.sum()) * ori_loss * predict.shape[0]
@@ -192,17 +194,17 @@ class SFRon(UnlearnMethod):
                 cur_forget_alpha = lr_scheduler(self.forget_alpha, step, self.n_iters)
                 # adaptive weighted gradient ascent on forget train
                 x_forget, y_forget = next(forget_train_iter)
-                x_forget, y_forget = x_forget.cuda(), y_forget.cuda() 
+                x_forget, y_forget = x_forget.to(DEVICE), y_forget.to(DEVICE) 
                 optimizer.zero_grad()
                 outputs = self.model(x_forget)
-                ori_forget_loss = -self.forget_loss_function(outputs, y_forget)
+                ori_forget_loss = -self.forget_loss_function(outputs, y_forget.to(torch.int64))
                 forget_loss = cur_forget_alpha * ori_forget_loss
                 forget_loss.backward()
                 if self.mask: 
                     for name, param in self.model.named_parameters():
                         if param.grad is not None:
                             param.grad *= self.weight_saliency_mask[name].to(param.grad.device)
-                torch.nn.utils.clip_grad_norm(self.model.parameters(), max_norm=self.max_norm)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_norm)
                 optimizer.step()
                 forget_acc1 = utils.accuracy(outputs.data, y_forget)[0]
                 running_forget_loss += ori_forget_loss
@@ -212,11 +214,11 @@ class SFRon(UnlearnMethod):
             # train on retain train
             self.model.train()
             x_retain, y_retain = next(retain_train_iter)
-            x_retain, y_retain = x_retain.cuda(), y_retain.cuda() 
+            x_retain, y_retain = x_retain.to(DEVICE), y_retain.to(DEVICE) 
 
             optimizer.zero_grad()
             outputs = self.model(x_retain)
-            ori_remain_loss = self.retain_loss_function(outputs, y_retain)
+            ori_remain_loss = self.retain_loss_function(outputs, y_retain.to(torch.int64))
             remain_loss = ori_remain_loss
             remain_loss.backward()
             optimizer.step()
@@ -266,7 +268,7 @@ class SFRon(UnlearnMethod):
         criterion = self.loss_function
 
         # forget fisher 
-        forget_fisher_path = os.path.join(self.save_path, "forget_fisher.pt")
+        forget_fisher_path = os.path.join(self.save_path, "forget_fisher.pth.tar")
         if os.path.exists(forget_fisher_path):
             forget_gradients = torch.load(forget_fisher_path)
         else:
@@ -274,13 +276,12 @@ class SFRon(UnlearnMethod):
             for name, param in self.model.named_parameters():
                 forget_gradients[name] = 0 
             self.model.eval()
-            for i, (image, target) in enumerate(forget_loader):
-                image = image.cuda()
-                target = target.cuda()
+            for i, (images, target) in enumerate(forget_loader):
+                images, target = images.to(DEVICE), target.to(DEVICE)
 
                 # compute output
-                output_clean = self.model(image)
-                loss = criterion(output_clean, target)
+                output_clean = self.model(images)
+                loss = criterion(output_clean, target.to(torch.int64))
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -293,7 +294,7 @@ class SFRon(UnlearnMethod):
             torch.save(forget_gradients, forget_fisher_path)
 
         # remain fisher 
-        remain_fisher_path = os.path.join(self.save_path, "remain_fisher.pt")
+        remain_fisher_path = os.path.join(self.save_path, "remain_fisher.pth.tar")
         if os.path.exists(remain_fisher_path): 
             remain_gradients = torch.load(remain_fisher_path)
         else:
@@ -301,13 +302,12 @@ class SFRon(UnlearnMethod):
             for name, param in self.model.named_parameters():
                 remain_gradients[name] = 0 
             self.model.eval()
-            for i, (image, target) in enumerate(remain_loader):
-                image = image.cuda()
-                target = target.cuda()
+            for i, (images, target) in enumerate(remain_loader):
+                images, target = images.to(DEVICE), target.to(DEVICE)
 
                 # compute output
-                output_clean = self.model(image)
-                loss = criterion(output_clean, target)
+                output_clean = self.model(images)
+                loss = criterion(output_clean, target.to(torch.int64))
 
                 optimizer.zero_grad()
                 loss.backward()

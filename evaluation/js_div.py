@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 def kl_divergence(p, q):
     p_log = torch.log(p + 1e-20)  
@@ -20,8 +22,7 @@ def get_js_divergence(forget_loader, unlearned_model, retrained_model):
         unlearned_model.eval()
         retrained_model.eval()
 
-        images = images.cuda()
-        labels = labels.cuda()
+        images, labels = images.to(DEVICE), labels.to(DEVICE)
         unlearn_preds.append(F.softmax(unlearned_model(images), dim=1))
         retrain_preds.append(F.softmax(retrained_model(images), dim=1))
     unlearn_preds = torch.cat(unlearn_preds, axis=0)

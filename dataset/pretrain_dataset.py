@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 from torchvision import transforms
+from collections import defaultdict
+import random
 
 class PretrainDataset:
     """

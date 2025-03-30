@@ -13,6 +13,8 @@ import utils
 from .unlearn_method import UnlearnMethod
 from trainer import train, validate
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 class DistillKL(nn.Module):
     """Distilling the Knowledge in a Neural Network"""
@@ -47,24 +49,7 @@ class SCRUB(UnlearnMethod):
         self.eval = False
         # params
         # TinyImageNet
-        self.opt = 'adamw'
-        self.gamma = 0.99
-        self.alpha = 0.001
-        self.beta = 0
-        self.smoothing = 0.0
-        self.msteps = 2
-        self.clip = 0.2
-        self.sstart = 10
-        self.kd_T = 4
-        self.distill = 'kd'
-        self.sched = 'cosine'
-        self.sgda_epochs = 1
-        self.sgda_learning_rate = 1e-4
-        self.sgda_weight_decay = 0.05
-        self.sgda_momentum = 0.9
-        self.print_freq = 100
-        # CIFAR10 
-        # self.opt = 'sgd'
+        # self.opt = 'adamw'
         # self.gamma = 0.99
         # self.alpha = 0.001
         # self.beta = 0
@@ -75,11 +60,28 @@ class SCRUB(UnlearnMethod):
         # self.kd_T = 4
         # self.distill = 'kd'
         # self.sched = 'cosine'
-        # self.sgda_epochs = 6
-        # self.sgda_learning_rate = 0.00008
-        # self.sgda_weight_decay = 5e-4
+        # self.sgda_epochs = 1
+        # self.sgda_learning_rate = 1e-4
+        # self.sgda_weight_decay = 0.05
         # self.sgda_momentum = 0.9
         # self.print_freq = 100
+        # CIFAR10 
+        self.opt = 'sgd'
+        self.gamma = 0.99
+        self.alpha = 0.001
+        self.beta = 0
+        self.smoothing = 0.0
+        self.msteps = 2
+        self.clip = 0.2
+        self.sstart = 10
+        self.kd_T = 4
+        self.distill = 'kd'
+        self.sched = 'cosine'
+        self.sgda_epochs = 6
+        self.sgda_learning_rate = 0.00008
+        self.sgda_weight_decay = 5e-4
+        self.sgda_momentum = 0.9
+        self.print_freq = 100
 
     
     def prepare_unlearn(self, unlearn_dataloaders: dict) -> None:
@@ -136,10 +138,10 @@ class SCRUB(UnlearnMethod):
             )
 
         if torch.cuda.is_available():
-            self.module_list.cuda()
-            self.criterion_list.cuda()
+            self.module_list.to(DEVICE)
+            self.criterion_list.to(DEVICE)
             cudnn.benchmark = True
-            self.swa_model.cuda()
+            self.swa_model.to(DEVICE)
 
         print("==> SCRUB unlearning ...")
         for epoch in range(1, self.sgda_epochs + 1):
@@ -208,8 +210,7 @@ class SCRUB(UnlearnMethod):
 
             input = input.float()
             if torch.cuda.is_available():
-                input = input.cuda()
-                target = target.cuda()
+                input, target = input.to(DEVICE), target.to(DEVICE)
 
             # ===================forward=====================
             logit_s = self.model_s(input)
@@ -217,8 +218,8 @@ class SCRUB(UnlearnMethod):
                 logit_t = self.model_t(input)
 
             # cls + kl div
-            loss_cls = criterion_cls(logit_s, target)
-            loss_div = criterion_div(logit_s, logit_t)
+            loss_cls = criterion_cls(logit_s, target.to(torch.int64))
+            loss_div = criterion_div(logit_s, logit_t.to(torch.int64))
 
             # other kd beyond KL divergence
             if self.distill == 'kd':

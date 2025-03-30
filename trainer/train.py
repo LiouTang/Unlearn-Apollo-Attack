@@ -2,20 +2,23 @@ import time
 from collections import OrderedDict
 import torch 
 import utils
+from tqdm import tqdm
+
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-def train(epoch, loader, model, loss_function, optimizer, scheduler=None, log_freq=10000):
-    start = time.time()
+def train(epoch, loader, model, loss_function, optimizer, scheduler=None):
+    print("Training Epoch: ", epoch)
+
     losses = utils.AverageMeter()
     top1 = utils.AverageMeter()
-    for i, (images, labels) in enumerate(loader):
+    for i, (images, labels) in enumerate(pbar := tqdm(loader)):        
         model.train()
-        labels = labels.cuda()
-        images = images.cuda()
+        images, labels = images.to(DEVICE), labels.to(DEVICE)
 
         optimizer.zero_grad()
         outputs = model(images)
-        loss = loss_function(outputs, labels)
+        loss = loss_function(outputs, labels.to(torch.int64))
         loss.backward()
         optimizer.step()
 
@@ -25,10 +28,11 @@ def train(epoch, loader, model, loss_function, optimizer, scheduler=None, log_fr
 
         if scheduler is not None:
             scheduler.step()
-        if i % log_freq == 0:
-            print(f"Train {i}/{len(loader)} Loss {losses.val:.4f}({losses.avg:.4f}) Acc {top1.val:.4f}({top1.avg:.4f})")
-    finish = time.time()
+        
+        pbar.set_postfix({
+            "Loss": losses.avg,
+            "Accuracy": top1.avg,
+        })
     lr = optimizer.param_groups[0]['lr']
-    print(f"Train Epoch {epoch} Loss {losses.avg:.4f} Acc {top1.avg:.4f} LR {lr} Time: {finish-start:.2f}s")
 
     return OrderedDict([('loss', losses.avg), ('top1', top1.avg), ('lr', lr)])

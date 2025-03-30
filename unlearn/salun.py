@@ -13,6 +13,8 @@ import utils
 from .unlearn_method import UnlearnMethod, UnLearnDataset
 from trainer import train, validate
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 class SalUn(UnlearnMethod):
     def __init__(self, model, loss_function, save_path, args) -> None:
@@ -96,12 +98,11 @@ class SalUn(UnlearnMethod):
             for i, (data, unlearn_labels) in enumerate(self.unlearn_dataloader):
                 self.model.train() 
                 images, labels = data
-                labels = labels.cuda()
-                images = images.cuda()
+                images, labels = images.to(DEVICE), labels.to(DEVICE)
 
                 optimizer.zero_grad()
                 outputs = self.model(images)
-                loss = self.loss_function(outputs, labels)
+                loss = self.loss_function(outputs, labels.to(torch.int64))
                 loss.backward()
 
                 if self.mask:
@@ -144,13 +145,12 @@ class SalUn(UnlearnMethod):
         criterion = self.loss_function
         gradients = self.zerolike_params_dict(self.model)
         self.model.eval()
-        for i, (image, target) in enumerate(forget_loader):
-            image = image.cuda()
-            target = target.cuda()
+        for i, (images, target) in enumerate(forget_loader):
+            images, target = images.to(DEVICE), target.to(DEVICE)
 
             # compute output
-            output_clean = self.model(image)
-            loss = - criterion(output_clean, target)
+            output_clean = self.model(images)
+            loss = - criterion(output_clean, target.to(torch.int64))
 
             optimizer.zero_grad()
             loss.backward()

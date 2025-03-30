@@ -10,6 +10,8 @@ from .unlearn_method import UnlearnMethod
 from models import create_model
 from trainer import train, validate
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 class Retrain(UnlearnMethod):
     def __init__(self, model, loss_function, save_path, args) -> None:
@@ -30,15 +32,15 @@ class Retrain(UnlearnMethod):
         self.opt = 'sgd'
         self.momentum = 0.9
         self.weight_decay = 5e-4
-        self.lr = 0.1
-        self.epochs = 200
+        self.lr = 1e-3
+        self.epochs = 50
         self.sched = 'cosine'
 
     def prepare_unlearn(self, unlearn_dataloaders: dict) -> None:
         self.unlearn_dataloaders = unlearn_dataloaders 
         if self.retrain_checkpoint is None:
             self.model = create_model(model_name=self.model_name, num_classes=self.num_classes)
-            self.model.cuda() 
+            self.model.to(DEVICE) 
         else:
             self.model.load_state_dict(torch.load(self.retrain_checkpoint))
 
@@ -57,10 +59,10 @@ class Retrain(UnlearnMethod):
         if self.sched == "cosine":
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.epochs)
 
-        weights_save_path = os.path.join(self.save_path, "checkpoint", datetime.now().strftime("%Y%m%d-%H%M%S"))
-        if not os.path.exists(weights_save_path):
-            os.makedirs(weights_save_path)
-        weights_path = os.path.join(weights_save_path, f"retrain-{self.seed}.pth")
+        # weights_save_path = os.path.join(self.save_path, "checkpoint", datetime.now().strftime("%Y%m%d-%H%M%S"))
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+        weights_path = os.path.join(self.save_path, f"retrain-seed-{self.seed}.pth.tar")
 
         best_acc = None 
         best_epoch = None 
@@ -79,11 +81,11 @@ class Retrain(UnlearnMethod):
                 forget_valid_metrics = {k:None for k in forget_train_metrics.keys()}
             scheduler.step(epoch)
             utils.update_summary(
-                f"{epoch}-retain", retain_train_metrics, retain_valid_metrics, os.path.join(weights_save_path, f"summary-retrain-{self.seed}.csv"),
+                f"{epoch}-retain", retain_train_metrics, retain_valid_metrics, os.path.join(self.save_path, f"summary-retrain-seed-{self.seed}.csv"),
                 write_header=best_acc is None,
             )
             utils.update_summary(
-                f"{epoch}-forget", forget_train_metrics, forget_valid_metrics, os.path.join(weights_save_path, f"summary-retrain-{self.seed}.csv"),
+                f"{epoch}-forget", forget_train_metrics, forget_valid_metrics, os.path.join(self.save_path, f"summary-retrain-seed-{self.seed}.csv"),
             )
             if best_acc is None or best_acc < retain_valid_metrics["top1"]:  
                 print("saving weights file to {}".format(weights_path))
