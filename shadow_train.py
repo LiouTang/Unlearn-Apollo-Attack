@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--size_shadow',    type=int,   default=2500,       help='size of shadow sets (default: 2500)')
     parser.add_argument('--num_shadow',     type=int,   default=16,         help='number of shadow models (default: 16)')
 
-    parser.add_argument('--model',          type=str,   default='ResNet18', help='Name of model to train (default: "resnet50"')
+    parser.add_argument('--model',          type=str,   default='ResNet18', help='Name of model to train (default: "ResNet18"')
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
     parser.add_argument('--input_size',     type=int,   default=None,       nargs=3, help='Input all image dimensions (d h w, e.g. --input_size 3 224 224)')
     parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
@@ -43,7 +43,7 @@ def main():
 
 
     utils.random_seed(args.seed)
-    save_path = os.path.join("./save", f"{args.model}-{args.dataset}-{str(args.size_train)}", "shadow")
+    save_path = os.path.join("./save", f"{args.model}-{args.dataset}", f"shadow-{str(args.size_shadow)}")
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
@@ -60,7 +60,7 @@ def main():
     for i in range(args.num_shadow):
         weights_path = os.path.join(save_path, f"{i}.pth.tar")
 
-        print(len(dataset.shadow_idx_collection[i]), dataset.shadow_idx_collection[i])
+        print("shadow:", i, len(dataset.shadow_idx_collection[i]), dataset.shadow_idx_collection[i])
         shadow_dataset = dataset.get_subset(dataset.train_dataset, dataset.shadow_idx_collection[i])
         shadow_loader = DataLoader(shadow_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
         model = create_model(model_name=args.model, num_classes=args.num_classes)

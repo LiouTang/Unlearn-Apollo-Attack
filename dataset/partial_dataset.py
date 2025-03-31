@@ -5,6 +5,8 @@ from torch.utils.data import Dataset
 import copy
 import numpy as np
 
+import utils
+
 class PartialDataset:
     def __init__(self, dataset_name, root, img_size, setting="Partial"):
         super().__init__()
@@ -24,7 +26,9 @@ class PartialDataset:
             new_dataset.labels = np.array(dataset.labels)[idx]
         return new_dataset
 
-    def set_train_shadow_idx(self, size_train, size_shadow=0, num_shadow=0):
+    def set_train_shadow_idx(self, size_train, size_shadow=0, num_shadow=0, seed=42):
+        utils.random_seed(seed)
+
         N = len(self.train_dataset)
         idx = np.arange(N)
         np.random.shuffle(idx)
@@ -40,7 +44,9 @@ class PartialDataset:
 
         print("train:", len(train_idx), train_idx[:5])
 
-    def set_unlearn_idx(self, un_perc=None, un_class=None):
+    def set_unlearn_idx(self, un_perc=None, un_class=None, seed=42):
+        utils.random_seed(seed)
+
         temp_train_idx = self.train_idx
         np.random.shuffle(temp_train_idx)
         if (un_perc != None):

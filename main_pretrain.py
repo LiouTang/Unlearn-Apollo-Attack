@@ -21,7 +21,7 @@ def main():
     parser.add_argument('--dataset',        type=str,   default='',         help='dataset type (default: ImageFolder/ImageTar if empty)')
     parser.add_argument('--size_train',     type=int,   default=2500,       help='train set size (default: 2500)')
 
-    parser.add_argument('--model',          type=str,   default='ResNet18', help='Name of model to train (default: "resnet50"')
+    parser.add_argument('--model',          type=str,   default='ResNet18', help='model architechture (default: "ResNet18"')
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
     parser.add_argument('--input_size',     type=int,   default=None,       nargs=3, help='Input all image dimensions (d h w, e.g. --input_size 3 224 224)')
     parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
@@ -39,7 +39,7 @@ def main():
 
 
     utils.random_seed(args.seed)
-    save_path = os.path.join("./save", f"{args.model}-{args.dataset}-{str(args.size_train)}")
+    save_path = os.path.join("./save", f"{args.model}-{args.dataset}", f"train-{str(args.size_train)}")
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     weights_path = os.path.join(save_path, "original.pth.tar")
@@ -49,10 +49,10 @@ def main():
     dataset.set_train_shadow_idx(size_train=args.size_train)
 
     trainset = dataset.get_subset(dataset.train_dataset, dataset.train_idx)
-    testset = dataset.valid_dataset
+    test_set = dataset.valid_dataset
 
-    trainloader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    testloader = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    train_loader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     # get network
     model = create_model(model_name=args.model, num_classes=args.num_classes)
@@ -69,8 +69,8 @@ def main():
     best_acc = None 
     best_epoch = None 
     for epoch in range(1, args.epochs + 1):
-        train_metrics = train(epoch, trainloader, model, loss_function, optimizer)
-        eval_metrics = validate(testloader, model, loss_function)
+        train_metrics = train(epoch, train_loader, model, loss_function, optimizer)
+        eval_metrics = validate(test_loader, model, loss_function)
         scheduler.step()
         utils.update_summary(
             epoch, train_metrics, eval_metrics, os.path.join(save_path, "summary.csv"),
