@@ -21,13 +21,13 @@ def main():
     parser = argparse.ArgumentParser(description='Shadow Models Pretrain Config')
     parser.add_argument('--data_dir',       type=str,   default='./data',   help='path to dataset')
     parser.add_argument('--dataset',        type=str,   default='',         help='dataset type (default: ImageFolder/ImageTar if empty)')
-    parser.add_argument('--size_train',     type=int,   default=2500,       help='train set size (default: 2500)')
     parser.add_argument('--size_shadow',    type=int,   default=2500,       help='size of shadow sets (default: 2500)')
     parser.add_argument('--num_shadow',     type=int,   default=16,         help='number of shadow models (default: 16)')
+    parser.add_argument('--split',          type=str,   default='half',     help='split for sampling shadow models (default: "half")')
 
     parser.add_argument('--model',          type=str,   default='ResNet18', help='Name of model to train (default: "ResNet18"')
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
-    parser.add_argument('--input_size',     type=int,   default=None,       nargs=3, help='Input all image dimensions (d h w, e.g. --input_size 3 224 224)')
+    parser.add_argument('--input_size',     type=int,   default=None,       nargs=3, help='Image dimensions (d h w, e.g. --input_size 3 224 224)')
     parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
 
     parser.add_argument('--opt',            type=str,   default='sgd',      help='Optimizer (default: "sgd")')
@@ -43,17 +43,14 @@ def main():
 
 
     utils.random_seed(args.seed)
-    save_path = os.path.join("./save", f"{args.model}-{args.dataset}", f"shadow-{str(args.size_shadow)}")
+    save_path = os.path.join("./save", f"{args.model}-{args.dataset}", f"shadow-{args.split}-{str(args.size_shadow)}")
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
     # dataloaders
     dataset = create_dataset(dataset_name=args.dataset, setting="Partial", root=args.data_dir, img_size=args.input_size[-1])
-    dataset.set_train_shadow_idx(size_train=args.size_train, size_shadow=args.size_shadow, num_shadow=args.num_shadow)
+    dataset.set_train_shadow_idx(size_train=0, size_shadow=args.size_shadow, num_shadow=args.num_shadow)
 
-    testset = dataset.valid_dataset
-
-    testloader = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     # training
     loss_function = nn.CrossEntropyLoss()
@@ -84,7 +81,6 @@ def main():
         print('*** Best metric: {0} (epoch {1})'.format(best_acc, best_epoch))
 
     data_split = {
-        "train":        dataset.train_idx,
         "shadow_col":   dataset.shadow_idx_collection,
     }
     with open(os.path.join(save_path, "data_split.pkl"), "wb") as f:

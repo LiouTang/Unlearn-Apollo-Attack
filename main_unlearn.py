@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
     parser.add_argument('--input_size',     type=int,   default=None,       nargs=3, help='Input all image dimensions (d h w, e.g. --input_size 3 224 224)')
     parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
-    parser.add_argument('--checkpoint',     type=str,   default='',         help='Initialize model from this checkpoint (default: none)')
+    # parser.add_argument('--checkpoint',     type=str,   default='',         help='Initialize model from this checkpoint (default: none)')
 
     parser.add_argument("--unlearn",        type=str,   required=True,      help="select unlearning method from choice set")
     parser.add_argument("--forget_perc",    type=float, default=None,       help="forget random subset percentage")
@@ -62,14 +62,16 @@ def main():
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     unlearn_dataloaders = OrderedDict(
-        unlearn = forget_loader,
-        retain  = retain_loader,
-        test    = test_loader
+        forget_train = forget_loader,
+        retain_train = retain_loader,
+        forget_valid = None,
+        retain_valid = test_loader,
     )
 
     # get network
     model = create_model(model_name=args.model, num_classes=args.num_classes)
-    model.load_state_dict(torch.load(args.checkpoint, map_location=DEVICE))
+    model_path = os.path.join("./save", f"{args.model}-{args.dataset}", f"train-{str(args.size_train)}", "original.pth.tar")
+    model.load_state_dict(torch.load(model_path, map_location=DEVICE, weights_only=True))
     model.to(DEVICE)
     loss_function = nn.CrossEntropyLoss()
 
