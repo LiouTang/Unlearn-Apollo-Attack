@@ -56,6 +56,8 @@ def main():
     loss_function = nn.CrossEntropyLoss()
     for i in range(args.num_shadow):
         weights_path = os.path.join(save_path, f"{i}.pth.tar")
+        if (os.path.exists(weights_path)):
+            continue
 
         print("shadow:", i, len(dataset.shadow_idx_collection[i]), dataset.shadow_idx_collection[i])
         shadow_dataset = dataset.get_subset(dataset.train_dataset, dataset.shadow_idx_collection[i])

@@ -7,7 +7,7 @@ class toynet(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(2, 256)
         hidden_layers = []
-        for _ in range(3):
+        for _ in range(10):
             hidden_layers.append(nn.Linear(256, 256))
             hidden_layers.append(nn.ReLU())
             hidden_layers.append(nn.BatchNorm1d(256))

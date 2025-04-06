@@ -2,7 +2,6 @@ import os
 import argparse
 import time
 import numpy as np
-import pandas as pd
 from collections import OrderedDict
 import pickle as pkl
 from tqdm import tqdm

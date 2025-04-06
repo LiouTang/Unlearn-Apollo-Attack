@@ -48,7 +48,7 @@ class ToyDataset(Dataset):
     def __getitem__(self, idx):
         return torch.Tensor(self.data)[idx], torch.Tensor(self.targets)[idx]
 
-class PrartialToyData(PartialDataset):
+class PartialToyData(PartialDataset):
     def __init__(self, root, img_size=0):
         super().__init__("ToyData", root, img_size, "Partial")
         train_dataset, train_labels, valid_dataset, valid_labels = generate_dataset(N=4)

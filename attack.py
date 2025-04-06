@@ -2,7 +2,6 @@ import os
 import argparse
 import time
 import numpy as np
-import pandas as pd
 from collections import OrderedDict
 import pickle as pkl
 from tqdm import tqdm
@@ -28,8 +27,8 @@ def main():
     parser.add_argument('--model',          type=str,   default='ResNet18', help='model architechture (default: "ResNet18"')
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
     parser.add_argument('--input_size',     type=int,   default=None,       nargs=3, help='Input all image dimensions (d h w, e.g. --input_size 3 224 224)')
-    parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
-    parser.add_argument('--path',           type=str,   default='',         help='Initialize model from this path (default: none)')
+    # parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
+    parser.add_argument('--target_path',           type=str,   default='',         help='Initialize model from this path (default: none)')
 
     parser.add_argument('--num_shadow',     type=int,   default=16,         help='number of shadow models (default: 16)')
     parser.add_argument('--shadow_model',   type=str,   default='ResNet18', help='shadow model architechture (default: "ResNet18"')
@@ -50,7 +49,7 @@ def main():
 
     # dataloaders
     dataset = create_dataset(dataset_name=args.dataset, setting="Partial", root=args.data_dir, img_size=args.input_size[-1])
-    with open(os.path.join(args.path, "data_split.pkl"), "rb") as f:
+    with open(os.path.join(args.target_path, "data_split.pkl"), "rb") as f:
         data_split = pkl.load(f)
 
     print(data_split["unlearn"][:10], data_split["retain"][:10])
@@ -67,7 +66,7 @@ def main():
 
     # get network
     target_model = create_model(model_name=args.model, num_classes=args.num_classes)
-    target_model.load_state_dict(torch.load(os.path.join(args.path, "unlearn.pth.tar"), map_location=DEVICE, weights_only=True))
+    target_model.load_state_dict(torch.load(os.path.join(args.target_path, "unlearn.pth.tar"), map_location=DEVICE, weights_only=True))
     target_model.to(DEVICE)
     target_model.eval()
 
