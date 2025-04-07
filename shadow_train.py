@@ -49,7 +49,7 @@ def main():
 
     # dataloaders
     dataset = create_dataset(dataset_name=args.dataset, setting="Partial", root=args.data_dir, img_size=args.input_size[-1])
-    dataset.set_train_shadow_idx(size_train=0, size_shadow=args.size_shadow, num_shadow=args.num_shadow)
+    dataset.set_train_shadow_idx(size_train=0, size_shadow=args.size_shadow, num_shadow=args.num_shadow, split=args.split)
 
 
     # training

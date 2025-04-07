@@ -42,7 +42,7 @@ class PartialDataset:
                 shadow_idx_collection[i] = np.random.choice(shadow_idx, size=size_shadow, replace=False)
         elif (split == "full"):
             for i in range(num_shadow):
-                shadow_idx_collection[i] = np.random.choice(full_idx, size=size_shadow, replace=False)        
+                shadow_idx_collection[i] = np.random.choice(full_idx, size=size_shadow, replace=False)
 
         self.train_idx = train_idx
         self.shadow_idx_collection = shadow_idx_collection

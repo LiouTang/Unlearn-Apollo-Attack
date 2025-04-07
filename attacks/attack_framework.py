@@ -10,6 +10,7 @@ class Attack_Framework():
         self.shadow_models = shadow_models
         self.include, self.exclude = [], []
         self.args = args
+        self.summary = dict()
 
         self.CE = nn.CrossEntropyLoss()
 

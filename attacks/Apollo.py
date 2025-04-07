@@ -64,6 +64,7 @@ class Apollo(Attack_Framework):
             torch.clamp(adv_input, min=0, max=1) # Image data
             if (loss.item() < .2):
                 break
+        adv_input = adv_input.clone().detach()
 
         if (self.args.debug):
             include_labels, exclude_labels = self.get_labels(adv_input)
@@ -71,7 +72,47 @@ class Apollo(Attack_Framework):
             print(">>>>>>>>>>", target_label, adv_label)
             print("include_labels: ", include_labels)
             print("exclude_labels: ", exclude_labels)
-        return adv_input.clone().detach()
+        return adv_input, torch.norm(target_input - adv_input, p=2)
 
     def Over_Un_Adv(self, target_input, target_label):
-        return
+        # Over-Unlearning: Given target (x, y), adv. input x',
+        # unlearned model (x in unlearned set) x' --> y'
+        # retrained model (x not in unlearned set) x' --> y --> Find the nearest (x', y)
+        adv_input = target_input.detach().clone().to(DEVICE)
+        adv_input.requires_grad = True
+        adv_label = target_label.to(torch.int64).to(DEVICE)
+        optimizer = torch.optim.SGD([adv_input], lr=self.args.lr)
+
+        for epoch in range(self.args.atk_epochs):
+            loss = 0.0
+            optimizer.zero_grad()
+            loss_exclude, loss_d, loss_db = 0.0, 0.0, 0.0
+
+            # Only consider exclude
+            for i in self.exclude:
+                adv_output = self.shadow_models[i](adv_input)
+                loss_exclude += F.cross_entropy(adv_output, adv_label)
+                loss_db += adv_output.topk(2)[1][0, 0] - adv_output.topk(2)[1][0, 1]
+            
+            loss_d = F.mse_loss(adv_input, target_input)
+            loss = self.args.w[0] * loss_exclude / len(self.exclude) + \
+                   self.args.w[1] * loss_d + \
+                   self.args.w[2] * loss_db / len(self.exclude)
+            loss.backward()
+            optimizer.step()
+            torch.clamp(adv_input, min=0, max=1) # Image data
+            if (loss.item() < .2):
+                break
+        adv_input = adv_input.clone().detach()
+        return adv_input, torch.norm(target_input - adv_input, p=2)
+
+    def update_atk_summary(self, target_input, target_label, idx):
+        under_adv_input, under_dist = self.Under_Un_Adv(target_input, target_label)
+        over_adv_input,  over_dist  = self.Over_Un_Adv(target_input, target_label)
+        self.summary[idx] = {
+            "under_adv_input"   : under_adv_input,
+            "under_dist"        : under_dist,
+            "over_adv_input"    : over_adv_input,
+            "over_dist"         : over_dist
+        }
+        return None

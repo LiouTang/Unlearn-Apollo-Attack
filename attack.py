@@ -57,12 +57,12 @@ def main():
     retain_set = dataset.get_subset(dataset.train_dataset, data_split["retain"])
     test_set = dataset.valid_dataset
 
-    forget_loader = DataLoader(forget_set, batch_size=1, shuffle=True, num_workers=4)
-    retain_loader = DataLoader(retain_set, batch_size=1, shuffle=True, num_workers=4)
+    forget_loader = DataLoader(forget_set, batch_size=1, shuffle=False, num_workers=4)
+    retain_loader = DataLoader(retain_set, batch_size=1, shuffle=False, num_workers=4)
     test_loader = DataLoader(test_set, batch_size=1, shuffle=False, num_workers=4)
 
-    idxs = OrderedDict(unlearn = data_split["unlearn"], retain = data_split["retain"], test = [])
-    unlearn_loaders = OrderedDict(unlearn = forget_loader, retain = retain_loader, test = test_loader)
+    idxs            = OrderedDict(unlearn = data_split["unlearn"],  retain = data_split["retain"],  test = [])
+    unlearn_loaders = OrderedDict(unlearn = forget_loader,          retain = retain_loader,         test = test_loader)
 
     # get network
     target_model = create_model(model_name=args.model, num_classes=args.num_classes)
