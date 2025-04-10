@@ -36,9 +36,9 @@ def main():
 
     parser.add_argument('--N',              type=int,   default=100,        help='number of samples to attack on')
     parser.add_argument('--atk',            type=str,   default="Apollo",   help='Attack Name')
-    parser.add_argument('--atk_lr',         type=float, default=None,       help='learning rate, overrides lr-base if set (default: None)')
+    parser.add_argument('--atk_lr',         type=float, default=1e-3,       help='Attack learning rate')
     parser.add_argument('--atk_epochs',     type=int,   default=30,         help='number of epochs for attack (default: 30)')
-    parser.add_argument('--weights',        type=float, default=None,       nargs=3, help='Adv. loss function weights')
+    parser.add_argument('--w',              type=float, default=None,       nargs=3, help='Adv. loss function weights')
     # parser.add_argument('--eps',            type=float, default=1e-3,       help='epsilon for clipping')
     parser.add_argument('--debug',                      action="store_true")
 
@@ -68,12 +68,17 @@ def main():
     idxs            = OrderedDict(unlearn = data_split["unlearn"],  retain = data_split["retain"],  test = [])
     unlearn_loaders = OrderedDict(unlearn = forget_loader,          retain = retain_loader,         test = test_loader)
 
-    # get network
+    # get target
     target_model = create_model(model_name=args.model, num_classes=args.num_classes)
     target_model.load_state_dict(torch.load(os.path.join(args.target_path, "unlearn.pth.tar"), map_location=DEVICE, weights_only=True))
     target_model.to(DEVICE)
     target_model.eval()
 
+    with open(os.path.join(args.target_path, "unlearn_args.pkl"), "rb") as f:
+        unlearn_args = pkl.load(f)
+    print("Unlearn Arguments Loaded:", unlearn_args)
+
+    # shadow models
     shadow_models = nn.ModuleList()
     for i in range(args.num_shadow):
         weights_path = os.path.join(args.shadow_path, f"{i}.pth.tar")
@@ -81,15 +86,14 @@ def main():
         model.load_state_dict(torch.load(weights_path, map_location=DEVICE, weights_only=True))
         model.to(DEVICE)
         model.eval()
+    
+        shadow_models.append(model)
     with open(os.path.join(args.shadow_path, "data_split.pkl"), "rb") as f:
         data_split = pkl.load(f)
     print(data_split.items())
     print("Models Loaded")
 
-    with open(os.path.join(args.shadow_path, "unlearn_args.pkl"), "rb") as f:
-        unlearn_args = pkl.load(f)
-    print("Unlearn Arguments Loaded:", unlearn_args)
-
+    # Attack!
     Atk = attacks.get_attack(
         dataset=dataset,
         name=args.atk,

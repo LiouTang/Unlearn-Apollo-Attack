@@ -13,8 +13,8 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class Apollo(Attack_Framework):
-    def __init__(self, shadow_models, args):
-        super().__init__(shadow_models, args)
+    def __init__(self, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
+        super().__init__(dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
 
     def get_near_miss_label(self, target_input, target_label):
         min_loss_label = None
@@ -24,7 +24,7 @@ class Apollo(Attack_Framework):
                 continue
 
             sum_loss = 0
-            for i in range(len(self.exclude)):
+            for i in self.exclude:
                 adv_output = self.shadow_models[i](target_input)
                 loss = self.CE(adv_output, torch.Tensor([label]).to(torch.int64).to(DEVICE))
                 sum_loss += loss.item()
@@ -42,7 +42,7 @@ class Apollo(Attack_Framework):
         adv_input = target_input.detach().clone().to(DEVICE)
         adv_input.requires_grad = True
         adv_label = self.get_near_miss_label(target_input, target_label)
-        optimizer = torch.optim.SGD([adv_input], lr=self.args.lr)
+        optimizer = torch.optim.SGD([adv_input], lr=self.args.atk_lr)
 
         for epoch in range(self.args.atk_epochs):
             loss = 0.0
@@ -81,7 +81,7 @@ class Apollo(Attack_Framework):
         adv_input = target_input.detach().clone().to(DEVICE)
         adv_input.requires_grad = True
         adv_label = target_label.to(torch.int64).to(DEVICE)
-        optimizer = torch.optim.SGD([adv_input], lr=self.args.lr)
+        optimizer = torch.optim.SGD([adv_input], lr=self.args.atk_lr)
 
         for epoch in range(self.args.atk_epochs):
             loss = 0.0

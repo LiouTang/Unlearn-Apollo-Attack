@@ -17,12 +17,19 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class ULiRA(Attack_Framework):
-    def __init__(self, shadow_models, args):
-        super().__init__(shadow_models, args)
+    def __init__(self, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
+        super().__init__(dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
+        self.unlearned_shadow_models = nn.ModuleList()
+        for i in range(self.args.num_shadow):
+            self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
+        exit()
 
     def get_unlearned_model(self, i: int):
         unlearned_model = create_model(model_name=self.args.shadow_model, num_classes=self.args.num_classes)
-        weights_path = os.path.join(self.args.shadow_path, f"unlearned_{i}.pth.tar")
+        save_path = os.path.join(self.args.shadow_path, f"{self.unlearn_args.size_train}_{self.unlearn_args.unlearn}")
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        weights_path = os.path.join(save_path, f"{i}.pth.tar")
 
         if os.path.exists(weights_path):
             unlearned_model.load_state_dict(torch.load(weights_path, map_location=DEVICE, weights_only=True))
@@ -30,8 +37,9 @@ class ULiRA(Attack_Framework):
             unlearned_model.eval()
             return unlearned_model
         else:
-            forget_idx = set(self.idxs["unlearn"]).intersection(self.shadow_col[i])
-            retain_idx = set(self.idxs["unlearn"]).difference(self.shadow_col[i])
+            forget_idx = np.array(list( set(self.idxs["unlearn"]).intersection(self.shadow_col[i]) ))
+            retain_idx = np.array(list( set(self.idxs["unlearn"]).difference(self.shadow_col[i])   ))
+            print(">>>", forget_idx[:5], retain_idx[:5])
 
             forget_set = self.dataset.get_subset(self.dataset.train_dataset, forget_idx)
             retain_set = self.dataset.get_subset(self.dataset.train_dataset, retain_idx)
@@ -47,6 +55,8 @@ class ULiRA(Attack_Framework):
             unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], self.CE, weights_path, self.unlearn_args)
             unlearn_method.prepare_unlearn(unlearn_dataloaders)
             unlearned_model = unlearn_method.get_unlearned_model()
+            torch.save(unlearned_model.state_dict(), weights_path)
+
             return unlearned_model
 
     def update_atk_summary(self, target_input, target_label, idx):
@@ -55,10 +65,9 @@ class ULiRA(Attack_Framework):
             model = self.get_unlearned_model(i)
             with torch.no_grad():
                 output = model(target_input)
-            print(">>>>>>>>>>>>>", output.shape)
-            exit()
+            # print(">>>>>>>>>>>>>", output.shape)
         for i in self.exclude:
-            model = self.get_unlearned_model(i)
+            model = self.shadow_models[i]
             with torch.no_grad():
                 output = model(target_input)
         self.summary[idx] = {
