@@ -7,6 +7,7 @@ from .random_label import RandomLabel
 from .scrub import SCRUB
 from .salun import SalUn
 from .sfron import SFRon
+from .unlearn_method import UnlearnMethod
 
-def create_unlearn_method(unlearn_name):
+def create_unlearn_method(unlearn_name) -> UnlearnMethod:
     return eval(unlearn_name)

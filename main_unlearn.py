@@ -102,6 +102,8 @@ def main():
         "unlearn":  dataset.unlearn_idx,
         "retain":   dataset.retain_idx,
     }
+    with open(os.path.join(save_path, "unlearn_args.pkl"), "wb") as f:
+        pkl.dump(args, f)
     with open(os.path.join(save_path, "data_split.pkl"), "wb") as f:
         pkl.dump(data_split, f)
     with open(os.path.join(save_path, "eval_result.pkl"), "wb") as f:

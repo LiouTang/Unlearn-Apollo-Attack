@@ -17,7 +17,7 @@ class PartialDataset:
         self.train_dataset = Dataset
         self.valid_dataset = Dataset
 
-    def get_subset(self, dataset=None, idx=None):
+    def get_subset(self, dataset=None, idx=None) -> Dataset:
         new_dataset = copy.deepcopy(dataset)
         new_dataset.data = dataset.data[idx]
         try:

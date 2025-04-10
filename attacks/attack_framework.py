@@ -1,23 +1,31 @@
 import torch
 import torch.nn as nn
+import copy
+from collections import OrderedDict
+from dataset import PartialDataset
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class Attack_Framework():
-    def __init__(self, shadow_models, args):
-        self.num_shadow = args.num_shadow
+    def __init__(self, dataset : PartialDataset, shadow_models : nn.ModuleList, args, idxs: OrderedDict, shadow_col: dict[list], unlearn_args):
+        self.dataset = dataset
         self.shadow_models = shadow_models
         self.include, self.exclude = [], []
         self.args = args
-        self.summary = dict()
+        self.idxs = idxs
+        self.shadow_col = {}
+        for i in shadow_col:
+            self.shadow_col[i] = set(shadow_col[i])
+        self.unlearn_args = unlearn_args
 
+        self.summary = dict()
         self.CE = nn.CrossEntropyLoss()
 
-    def set_include_exclude(self, target_idx, shadow_idx_collection):
+    def set_include_exclude(self, target_idx):
         include, exclude = [], []
-        for i in range(self.num_shadow):
-            if (target_idx in set(shadow_idx_collection[i])):
+        for i in range(self.args.num_shadow):
+            if (target_idx in set(self.shadow_col[i])):
                 include.append(i)
             else:
                 exclude.append(i)
@@ -39,3 +47,10 @@ class Attack_Framework():
             pred_label = adv_output.max(1)[1]
             exclude_labels.append(pred_label.item())
         return include_labels, exclude_labels
+
+    def update_atk_summary(self, target_input, target_label, idx) -> dict:
+        return {}
+    def get_atk_summary(self):
+        summary = self.summary.copy()
+        self.summary = dict()
+        return summary

@@ -34,9 +34,10 @@ def main():
     parser.add_argument('--shadow_model',   type=str,   default='ResNet18', help='shadow model architechture (default: "ResNet18"')
     parser.add_argument('--shadow_path',    type=str,   default='',         help='Initialize shadow models from this path (default: none)')
 
+    parser.add_argument('--N',              type=int,   default=100,        help='number of samples to attack on')
     parser.add_argument('--atk',            type=str,   default="Apollo",   help='Attack Name')
     parser.add_argument('--atk_lr',         type=float, default=None,       help='learning rate, overrides lr-base if set (default: None)')
-    parser.add_argument('--atk_epochs',     type=int,   default=30,         help='amx number of epochs for attack (default: 30)')
+    parser.add_argument('--atk_epochs',     type=int,   default=30,         help='number of epochs for attack (default: 30)')
     parser.add_argument('--weights',        type=float, default=None,       nargs=3, help='Adv. loss function weights')
     # parser.add_argument('--eps',            type=float, default=1e-3,       help='epsilon for clipping')
     parser.add_argument('--debug',                      action="store_true")
@@ -53,6 +54,9 @@ def main():
         data_split = pkl.load(f)
 
     print(data_split["unlearn"][:10], data_split["retain"][:10])
+    data_split["unlearn"] = np.random.choice(data_split["unlearn"], 200, replace=False)
+    data_split["retain"]  = np.random.choice(data_split["retain"],  200, replace=False)
+    data_split["test"]    = np.random.choice(data_split["retain"],  200, replace=False)
     forget_set = dataset.get_subset(dataset.train_dataset, data_split["unlearn"])
     retain_set = dataset.get_subset(dataset.train_dataset, data_split["retain"])
     test_set = dataset.valid_dataset
@@ -74,7 +78,6 @@ def main():
     for i in range(args.num_shadow):
         weights_path = os.path.join(args.shadow_path, f"{i}.pth.tar")
         model = create_model(model_name=args.shadow_model, num_classes=args.num_classes)
-
         model.load_state_dict(torch.load(weights_path, map_location=DEVICE, weights_only=True))
         model.to(DEVICE)
         model.eval()
@@ -83,10 +86,22 @@ def main():
     print(data_split.items())
     print("Models Loaded")
 
-    atk = attacks.get_attack(name=args.atk, shadow_models=shadow_models, args=args)
+    with open(os.path.join(args.shadow_path, "unlearn_args.pkl"), "rb") as f:
+        unlearn_args = pkl.load(f)
+    print("Unlearn Arguments Loaded:", unlearn_args)
+
+    Atk = attacks.get_attack(
+        dataset=dataset,
+        name=args.atk,
+        shadow_models=shadow_models,
+        args=args,
+        idxs=idxs,
+        shadow_col=data_split["shadow_col"],
+        unlearn_args=unlearn_args
+    )
     for name, loader in unlearn_loaders.items():
         for i, (target_input, target_label) in enumerate(pbar := tqdm(loader)):
-            atk.set_include_exclude(target_idx=idxs[name][i], shadow_idx_collection=data_split["shadow_col"])
+            Atk.set_include_exclude(target_idx=idxs[name][i])
 
             # Origninal Prediction
             target_input, target_label = target_input.to(DEVICE), target_label.to(DEVICE)
@@ -94,6 +109,8 @@ def main():
                 output = target_model(target_input)
             pred = output.max(1)[1]
 
+            Atk.update_atk_summary(target_input, target_label, idxs[name][i])
+        summary = Atk.get_atk_summary()
 
 if __name__ == '__main__':
     main()
