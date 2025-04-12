@@ -84,12 +84,12 @@ class ULiRA(Attack_Framework):
         }
         return None
     
-    def get_results(self, target_model):
+    def get_results(self, target_model, **kwargs):
         tp, fp, fn, tn = [], [], [], []
 
         for th in tqdm(np.arange(0, 1, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "retain", "test"]:
+            for name in ["unlearn", "test"]:
                 for i in self.summary[name]:
                     with torch.no_grad():
                         target_output = target_model(self.summary[name][i])

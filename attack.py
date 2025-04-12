@@ -21,6 +21,27 @@ from dataset import create_dataset
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+def plot_results(tp, fp, fn, tn, title):
+    if not os.path.exists("./Figs/"):
+        os.makedirs("./Figs/")
+    sort = np.argsort(fp)
+    tp, fp, fn, tn = tp[sort], fp[sort], fn[sort], tn[sort]
+    # print(tp, fp, fn, tn)
+    tpr = tp / (tp + fp)
+    fpr = fp / (fp + tn)
+
+    plt.figure(figsize=(8, 6))
+    plt.scatter(fpr, tpr, label='ROC (step curve)')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve (Step)')
+    plt.grid(True)
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
+    plt.legend()
+    plt.title(title)
+    plt.savefig("./Figs/" + title + ".pdf")
+    return
+
 def main():
     parser = argparse.ArgumentParser(description='Attack Config')
     parser.add_argument('--data_dir',       type=str,   default='./data',   help='path to dataset')
@@ -120,25 +141,20 @@ def main():
             pred = output.max(1)[1]
 
             Atk.update_atk_summary(name, target_input, target_label, idxs[name][i])
+            if (args.debug):
+                return
         # summary = Atk.get_atk_summary()
-    
-    # Interpret results
-    tp, fp, fn, tn = Atk.get_results(target_model)
-    sort = np.argsort(fp)
-    tp, fp, fn, tn = tp[sort], fp[sort], fn[sort], tn[sort]
-    tpr = tp / (tp + fp)
-    fpr = fp / (fp + tn)
 
-    plt.figure(figsize=(8, 6))
-    plt.step(fpr, tpr, where='post', label='ROC (step curve)')
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve (Step)')
-    plt.grid(True)
-    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
-    plt.legend()
+    # Interpret results
     time = datetime.now().strftime("%m_%d_%H_%M")
-    plt.savefig(f"{args.atk}-{time}.pdf")
+    if (args.atk == "Apollo"):
+        tp, fp, fn, tn = Atk.get_results(target_model, type="under")
+        plot_results(tp, fp, fn, tn, f"{args.atk}-under")
+        tp, fp, fn, tn = Atk.get_results(target_model, type="over")
+        plot_results(tp, fp, fn, tn, f"{args.atk}-over")
+    else:
+        tp, fp, fn, tn = Atk.get_results(target_model)
+        plot_results(tp, fp, fn, tn, f"{args.atk}")
 
 if __name__ == '__main__':
     main()

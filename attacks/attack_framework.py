@@ -55,5 +55,5 @@ class Attack_Framework():
         self.summary = dict()
         return summary
 
-    def get_results(self, target_model):
+    def get_results(self, target_model, **kwargs):
         return

@@ -105,12 +105,23 @@ class Apollo(Attack_Framework):
             if (loss.item() < .2):
                 break
         adv_input = adv_input.clone().detach()
+
+        if (self.args.debug):
+            include_labels, exclude_labels = self.get_labels(adv_input)
+            print(self.include, self.exclude)
+            print(">>>>>>>>>>", target_label, adv_label)
+            print("include_labels: ", include_labels)
+            print("exclude_labels: ", exclude_labels)
         return adv_input, torch.norm(target_input - adv_input, p=2).item()
 
     def update_atk_summary(self, name, target_input, target_label, idx):
         if (not name in self.summary):
             self.summary[name] = dict()
+        if (self.args.debug):
+            print("Under--------------------------------------")
         under_adv_input, under_dist = self.Under_Un_Adv(target_input, target_label)
+        if (self.args.debug):
+            print("Over---------------------------------------")
         over_adv_input,  over_dist  = self.Over_Un_Adv(target_input, target_label)
         self.max_dist = max(max(self.max_dist, under_dist), over_dist)
         self.summary[name][idx] = {
@@ -121,41 +132,68 @@ class Apollo(Attack_Framework):
         }
         return None
 
-    def get_results(self, target_model):
+    def get_results(self, target_model, **kwargs):
+        if (kwargs["type"] == "under"):
+            return self.get_results_Under(target_model)
+        elif (kwargs["type"] == "over"):
+            return self.get_results_Over(target_model)
+
+    def get_results_Under(self, target_model):
         tp, fp, fn, tn = [], [], [], []
 
+        print(self.max_dist)
         print("Calculating Results!")
-        for eps in tqdm(np.arange(0, self.max_dist, 1e-3)):
+        for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "retain", "test"]:
+            for name in ["unlearn", "test"]:
                 inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
                 gt     = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0)
 
                 under_adv = torch.cat([self.summary[name][i]["under_adv_input"] for i in self.summary[name]], dim=0)
-                over_adv  = torch.cat([self.summary[name][i]["over_adv_input"]  for i in self.summary[name]], dim=0)
-                for eps in np.arange(0, 1, 1e-3):
-                    under_eps = inputs + normalize(under_adv - inputs) * eps
-                    over_eps  = inputs + normalize(over_adv  - inputs) * eps
+                under_eps = inputs + normalize(under_adv - inputs) * eps
+
                 with torch.no_grad():
                     under_outputs = target_model(under_eps)
-                    over_outputs  = target_model(over_eps)
                 under_pred = under_outputs.max(1)[1]
-                over_pred  = over_outputs.max(1)[1]
-                
+                # print(eps, name,  under_pred)
+
                 if (name == "unlearn"):
-                    _tp += np.sum(
-                        (under_pred.cpu().numpy() == gt.cpu().numpy()) | (over_pred.cpu().numpy() != gt.cpu().numpy())
-                    )
-                    _fn += np.sum(
-                        (under_pred.cpu().numpy() != gt.cpu().numpy()) * (over_pred.cpu().numpy() == gt.cpu().numpy())
-                    )
+                    _tp += np.sum( (under_pred.cpu().numpy() == gt.cpu().numpy()) )
+                    _fn += np.sum( (under_pred.cpu().numpy() != gt.cpu().numpy()) )
                 else:
-                    _fp += np.sum(
-                        (under_pred.cpu().numpy() == gt.cpu().numpy()) | (over_pred.cpu().numpy() != gt.cpu().numpy())
-                    )
-                    _tn += np.sum(
-                        (under_pred.cpu().numpy() != gt.cpu().numpy()) * (over_pred.cpu().numpy() == gt.cpu().numpy())
-                    )
+                    _fp += np.sum( (under_pred.cpu().numpy() == gt.cpu().numpy()) )
+                    _tn += np.sum( (under_pred.cpu().numpy() != gt.cpu().numpy()) )
+            tp.append(_tp)
+            fp.append(_fp)
+            fn.append(_fn)
+            tn.append(_tn)
+        return np.array(tp), np.array(fp), np.array(fn), np.array(tn)
+
+    def get_results_Over(self, target_model):
+        tp, fp, fn, tn = [], [], [], []
+
+        print(self.max_dist)
+        print("Calculating Results!")
+        for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
+            _tp, _fp, _fn, _tn = 0, 0, 0, 0
+            for name in ["unlearn", "test"]:
+                inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
+                gt     = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0)
+
+                over_adv  = torch.cat([self.summary[name][i]["over_adv_input"]  for i in self.summary[name]], dim=0)
+                over_eps  = inputs + normalize(over_adv  - inputs) * eps
+
+                with torch.no_grad():
+                    over_outputs  = target_model(over_eps)
+                over_pred  = over_outputs.max(1)[1]
+                # print(eps, name, over_pred)
+
+                if (name == "unlearn"):
+                    _tp += np.sum( (over_pred.cpu().numpy() != gt.cpu().numpy()) )
+                    _fn += np.sum( (over_pred.cpu().numpy() == gt.cpu().numpy()) )
+                else:
+                    _fp += np.sum( (over_pred.cpu().numpy() != gt.cpu().numpy()) )
+                    _tn += np.sum( (over_pred.cpu().numpy() == gt.cpu().numpy()) )
             tp.append(_tp)
             fp.append(_fp)
             fn.append(_fn)
