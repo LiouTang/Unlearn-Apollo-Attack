@@ -124,11 +124,12 @@ class Apollo(Attack_Framework):
     def get_results(self, target_model):
         tp, fp, fn, tn = [], [], [], []
 
-        for eps in np.arange(0, self.max_dist, 1e-3):
+        print("Calculating Results!")
+        for eps in tqdm(np.arange(0, self.max_dist, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "retain", "test"]:
                 inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
-                gt     = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
+                gt     = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0)
 
                 under_adv = torch.cat([self.summary[name][i]["under_adv_input"] for i in self.summary[name]], dim=0)
                 over_adv  = torch.cat([self.summary[name][i]["over_adv_input"]  for i in self.summary[name]], dim=0)
@@ -143,27 +144,23 @@ class Apollo(Attack_Framework):
                 
                 if (name == "unlearn"):
                     _tp += np.sum(
-                        under_pred.cpu().numpy() == gt.cpu().numpy() * \
-                        over_pred.cpu().numpy() != gt.cpu().numpy()
+                        (under_pred.cpu().numpy() == gt.cpu().numpy()) | (over_pred.cpu().numpy() != gt.cpu().numpy())
                     )
                     _fn += np.sum(
-                        1 - under_pred.cpu().numpy() != gt.cpu().numpy() * \
-                        over_pred.cpu().numpy() == gt.cpu().numpy()
+                        (under_pred.cpu().numpy() != gt.cpu().numpy()) * (over_pred.cpu().numpy() == gt.cpu().numpy())
                     )
                 else:
                     _fp += np.sum(
-                        under_pred.cpu().numpy() == gt.cpu().numpy() * \
-                        over_pred.cpu().numpy() != gt.cpu().numpy()
+                        (under_pred.cpu().numpy() == gt.cpu().numpy()) | (over_pred.cpu().numpy() != gt.cpu().numpy())
                     )
                     _tn += np.sum(
-                        1 - under_pred.cpu().numpy() != gt.cpu().numpy() * \
-                        over_pred.cpu().numpy() == gt.cpu().numpy()
+                        (under_pred.cpu().numpy() != gt.cpu().numpy()) * (over_pred.cpu().numpy() == gt.cpu().numpy())
                     )
             tp.append(_tp)
             fp.append(_fp)
             fn.append(_fn)
             tn.append(_tn)
-        return tp, fp, fn, tn
+        return np.array(tp), np.array(fp), np.array(fn), np.array(tn)
 
 def normalize(tensor):
     norm = torch.norm(tensor, p=2, dim=-1, keepdim=True)

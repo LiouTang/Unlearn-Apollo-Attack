@@ -53,7 +53,9 @@ class ULiRA(Attack_Framework):
                 forget_valid = None, retain_valid = None,
             )
 
-            unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], self.CE, weights_path, self.unlearn_args)
+            if not os.path.exists(os.path.join(save_path, f"{i}")):
+                os.makedirs(os.path.join(save_path, f"{i}"))
+            unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], self.CE, os.path.join(save_path, f"{i}"), self.unlearn_args)
             unlearn_method.prepare_unlearn(unlearn_dataloaders)
             unlearned_model = unlearn_method.get_unlearned_model()
             torch.save(unlearned_model.state_dict(), weights_path)
@@ -85,7 +87,7 @@ class ULiRA(Attack_Framework):
     def get_results(self, target_model):
         tp, fp, fn, tn = [], [], [], []
 
-        for th in np.arange(0, 1, 1e-3):
+        for th in tqdm(np.arange(0, 1, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "retain", "test"]:
                 for i in self.summary[name]:

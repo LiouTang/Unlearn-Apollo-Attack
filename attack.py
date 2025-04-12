@@ -5,6 +5,8 @@ import numpy as np
 from collections import OrderedDict
 import pickle as pkl
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -56,16 +58,16 @@ def main():
     print(data_split["unlearn"][:10], data_split["retain"][:10])
     data_split["unlearn"] = np.random.choice(data_split["unlearn"], args.N, replace=False)
     data_split["retain"]  = np.random.choice(data_split["retain"],  args.N, replace=False)
-    data_split["test"]    = np.random.choice(data_split["retain"],  args.N, replace=False)
+    data_split["test"]    = np.random.choice(len(dataset.valid_dataset), args.N, replace=False)
     forget_set = dataset.get_subset(dataset.train_dataset, data_split["unlearn"])
     retain_set = dataset.get_subset(dataset.train_dataset, data_split["retain"])
-    test_set = dataset.valid_dataset
+    test_set   = dataset.get_subset(dataset.valid_dataset, data_split["test"])
 
     forget_loader = DataLoader(forget_set, batch_size=1, shuffle=False, num_workers=4)
     retain_loader = DataLoader(retain_set, batch_size=1, shuffle=False, num_workers=4)
-    test_loader = DataLoader(test_set, batch_size=1, shuffle=False, num_workers=4)
+    test_loader   = DataLoader(test_set,   batch_size=1, shuffle=False, num_workers=4)
 
-    idxs            = OrderedDict(unlearn = data_split["unlearn"],  retain = data_split["retain"],  test = [])
+    idxs            = OrderedDict(unlearn = data_split["unlearn"],  retain = data_split["retain"],  test = data_split["test"])
     unlearn_loaders = OrderedDict(unlearn = forget_loader,          retain = retain_loader,         test = test_loader)
 
     # Target
@@ -104,11 +106,12 @@ def main():
         unlearn_args=unlearn_args
     )
     for name, loader in unlearn_loaders.items():
+        print(name)
         for i, (target_input, target_label) in enumerate(pbar := tqdm(loader)):
             if (name != "test"):
                 Atk.set_include_exclude(target_idx=idxs[name][i])
             else:
-                Atk.include, Atk.exclude = [], [i for i in range(args.num_shadow)]
+                Atk.include, Atk.exclude = [], [j for j in range(args.num_shadow)]
 
             # Origninal Prediction
             target_input, target_label = target_input.to(DEVICE), target_label.to(DEVICE)
@@ -121,6 +124,21 @@ def main():
     
     # Interpret results
     tp, fp, fn, tn = Atk.get_results(target_model)
+    sort = np.argsort(fp)
+    tp, fp, fn, tn = tp[sort], fp[sort], fn[sort], tn[sort]
+    tpr = tp / (tp + fp)
+    fpr = fp / (fp + tn)
+
+    plt.figure(figsize=(8, 6))
+    plt.step(fpr, tpr, where='post', label='ROC (step curve)')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve (Step)')
+    plt.grid(True)
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
+    plt.legend()
+    time = datetime.now().strftime("%m_%d_%H_%M")
+    plt.savefig(f"{args.atk}-{time}.pdf")
 
 if __name__ == '__main__':
     main()
