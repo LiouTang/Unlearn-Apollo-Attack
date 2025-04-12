@@ -27,7 +27,7 @@ class ULiRA(Attack_Framework):
 
     def get_unlearned_model(self, i: int):
         unlearned_model = create_model(model_name=self.args.shadow_model, num_classes=self.args.num_classes)
-        save_path = os.path.join(self.args.shadow_path, f"{self.unlearn_args.size_train}-{self.unlearn_args.unlearn}")
+        save_path = os.path.join(self.args.shadow_path, f"{self.unlearn_args.size_train}-{self.unlearn_args.unlearn}-{self.args.N}")
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         weights_path = os.path.join(save_path, f"{i}.pth.tar")

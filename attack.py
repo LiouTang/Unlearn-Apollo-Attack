@@ -28,13 +28,13 @@ def main():
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
     parser.add_argument('--input_size',     type=int,   default=None,       nargs=3, help='Input all image dimensions (d h w, e.g. --input_size 3 224 224)')
     # parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
-    parser.add_argument('--target_path',           type=str,   default='',         help='Initialize model from this path (default: none)')
+    parser.add_argument('--target_path',    type=str,   default='',         help='Initialize model from this path (default: none)')
 
     parser.add_argument('--num_shadow',     type=int,   default=16,         help='number of shadow models (default: 16)')
     parser.add_argument('--shadow_model',   type=str,   default='ResNet18', help='shadow model architechture (default: "ResNet18"')
     parser.add_argument('--shadow_path',    type=str,   default='',         help='Initialize shadow models from this path (default: none)')
 
-    parser.add_argument('--N',              type=int,   default=100,        help='number of samples to attack on')
+    parser.add_argument('--N',              type=int,   default=200,        help='number of samples to attack')
     parser.add_argument('--atk',            type=str,   default="Apollo",   help='Attack Name')
     parser.add_argument('--atk_lr',         type=float, default=1e-3,       help='Attack learning rate')
     parser.add_argument('--atk_epochs',     type=int,   default=30,         help='number of epochs for attack (default: 30)')
@@ -105,7 +105,10 @@ def main():
     )
     for name, loader in unlearn_loaders.items():
         for i, (target_input, target_label) in enumerate(pbar := tqdm(loader)):
-            Atk.set_include_exclude(target_idx=idxs[name][i])
+            if (name != "test"):
+                Atk.set_include_exclude(target_idx=idxs[name][i])
+            else:
+                Atk.include, Atk.exclude = [], [i for i in range(args.num_shadow)]
 
             # Origninal Prediction
             target_input, target_label = target_input.to(DEVICE), target_label.to(DEVICE)
