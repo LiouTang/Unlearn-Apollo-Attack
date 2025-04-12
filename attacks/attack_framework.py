@@ -48,9 +48,12 @@ class Attack_Framework():
             exclude_labels.append(pred_label.item())
         return include_labels, exclude_labels
 
-    def update_atk_summary(self, target_input, target_label, idx) -> dict:
+    def update_atk_summary(self, name, target_input, target_label, idx) -> dict:
         return {}
     def get_atk_summary(self):
         summary = self.summary.copy()
         self.summary = dict()
         return summary
+
+    def get_results(self, target_model):
+        return

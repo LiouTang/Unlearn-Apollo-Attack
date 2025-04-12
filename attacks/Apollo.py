@@ -15,6 +15,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Apollo(Attack_Framework):
     def __init__(self, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
         super().__init__(dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
+        self.max_dist = 0.0
 
     def get_near_miss_label(self, target_input, target_label):
         min_loss_label = None
@@ -72,7 +73,7 @@ class Apollo(Attack_Framework):
             print(">>>>>>>>>>", target_label, adv_label)
             print("include_labels: ", include_labels)
             print("exclude_labels: ", exclude_labels)
-        return adv_input, torch.norm(target_input - adv_input, p=2)
+        return adv_input, torch.norm(target_input - adv_input, p=2).item()
 
     def Over_Un_Adv(self, target_input, target_label):
         # Over-Unlearning: Given target (x, y), adv. input x',
@@ -104,15 +105,66 @@ class Apollo(Attack_Framework):
             if (loss.item() < .2):
                 break
         adv_input = adv_input.clone().detach()
-        return adv_input, torch.norm(target_input - adv_input, p=2)
+        return adv_input, torch.norm(target_input - adv_input, p=2).item()
 
-    def update_atk_summary(self, target_input, target_label, idx):
+    def update_atk_summary(self, name, target_input, target_label, idx):
+        if (not name in self.summary):
+            self.summary[name] = dict()
         under_adv_input, under_dist = self.Under_Un_Adv(target_input, target_label)
         over_adv_input,  over_dist  = self.Over_Un_Adv(target_input, target_label)
-        self.summary[idx] = {
+        self.max_dist = max(max(self.max_dist, under_dist), over_dist)
+        self.summary[name][idx] = {
+            "target_input"      : target_input,
+            "target_label"      : target_label,
             "under_adv_input"   : under_adv_input,
-            "under_dist"        : under_dist,
             "over_adv_input"    : over_adv_input,
-            "over_dist"         : over_dist
         }
         return None
+
+    def get_results(self, target_model):
+        tp, fp, fn, tn = [], [], [], []
+
+        for eps in np.arange(0, self.max_dist, 1e-3):
+            _tp, _fp, _fn, _tn = 0, 0, 0, 0
+            for name in ["unlearn", "retain", "test"]:
+                inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
+                gt     = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
+
+                under_adv = torch.cat([self.summary[name][i]["under_adv_input"] for i in self.summary[name]], dim=0)
+                over_adv  = torch.cat([self.summary[name][i]["over_adv_input"]  for i in self.summary[name]], dim=0)
+                for eps in np.arange(0, 1, 1e-3):
+                    under_eps = inputs + normalize(under_adv - inputs) * eps
+                    over_eps  = inputs + normalize(over_adv  - inputs) * eps
+                with torch.no_grad():
+                    under_outputs = target_model(under_eps)
+                    over_outputs  = target_model(over_eps)
+                under_pred = under_outputs.max(1)[1]
+                over_pred  = over_outputs.max(1)[1]
+                
+                if (name == "unlearn"):
+                    _tp += np.sum(
+                        under_pred.cpu().numpy() == gt.cpu().numpy() * \
+                        over_pred.cpu().numpy() != gt.cpu().numpy()
+                    )
+                    _fn += np.sum(
+                        1 - under_pred.cpu().numpy() != gt.cpu().numpy() * \
+                        over_pred.cpu().numpy() == gt.cpu().numpy()
+                    )
+                else:
+                    _fp += np.sum(
+                        under_pred.cpu().numpy() == gt.cpu().numpy() * \
+                        over_pred.cpu().numpy() != gt.cpu().numpy()
+                    )
+                    _tn += np.sum(
+                        1 - under_pred.cpu().numpy() != gt.cpu().numpy() * \
+                        over_pred.cpu().numpy() == gt.cpu().numpy()
+                    )
+            tp.append(_tp)
+            fp.append(_fp)
+            fn.append(_fn)
+            tn.append(_tn)
+        return tp, fp, fn, tn
+
+def normalize(tensor):
+    norm = torch.norm(tensor, p=2, dim=-1, keepdim=True)
+    return tensor / (norm + 1e-9)

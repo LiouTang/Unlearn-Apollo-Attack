@@ -48,15 +48,15 @@ def main():
 
     utils.random_seed(args.seed)
 
-    # dataloaders
+    # Dataloaders
     dataset = create_dataset(dataset_name=args.dataset, setting="Partial", root=args.data_dir, img_size=args.input_size[-1])
     with open(os.path.join(args.target_path, "data_split.pkl"), "rb") as f:
         data_split = pkl.load(f)
 
     print(data_split["unlearn"][:10], data_split["retain"][:10])
-    data_split["unlearn"] = np.random.choice(data_split["unlearn"], 200, replace=False)
-    data_split["retain"]  = np.random.choice(data_split["retain"],  200, replace=False)
-    data_split["test"]    = np.random.choice(data_split["retain"],  200, replace=False)
+    data_split["unlearn"] = np.random.choice(data_split["unlearn"], args.N, replace=False)
+    data_split["retain"]  = np.random.choice(data_split["retain"],  args.N, replace=False)
+    data_split["test"]    = np.random.choice(data_split["retain"],  args.N, replace=False)
     forget_set = dataset.get_subset(dataset.train_dataset, data_split["unlearn"])
     retain_set = dataset.get_subset(dataset.train_dataset, data_split["retain"])
     test_set = dataset.valid_dataset
@@ -68,7 +68,7 @@ def main():
     idxs            = OrderedDict(unlearn = data_split["unlearn"],  retain = data_split["retain"],  test = [])
     unlearn_loaders = OrderedDict(unlearn = forget_loader,          retain = retain_loader,         test = test_loader)
 
-    # get target
+    # Target
     target_model = create_model(model_name=args.model, num_classes=args.num_classes)
     target_model.load_state_dict(torch.load(os.path.join(args.target_path, "unlearn.pth.tar"), map_location=DEVICE, weights_only=True))
     target_model.to(DEVICE)
@@ -78,7 +78,7 @@ def main():
         unlearn_args = pkl.load(f)
     print("Unlearn Arguments Loaded:", unlearn_args)
 
-    # shadow models
+    # Shadow models
     shadow_models = nn.ModuleList()
     for i in range(args.num_shadow):
         weights_path = os.path.join(args.shadow_path, f"{i}.pth.tar")
@@ -113,8 +113,11 @@ def main():
                 output = target_model(target_input)
             pred = output.max(1)[1]
 
-            Atk.update_atk_summary(target_input, target_label, idxs[name][i])
-        summary = Atk.get_atk_summary()
+            Atk.update_atk_summary(name, target_input, target_label, idxs[name][i])
+        # summary = Atk.get_atk_summary()
+    
+    # Interpret results
+    tp, fp, fn, tn = Atk.get_results(target_model)
 
 if __name__ == '__main__':
     main()
