@@ -79,17 +79,17 @@ def main():
     print(data_split["unlearn"][:10], data_split["retain"][:10])
     data_split["unlearn"] = np.random.choice(data_split["unlearn"], args.N, replace=False)
     data_split["retain"]  = np.random.choice(data_split["retain"],  args.N, replace=False)
-    data_split["test"]    = np.random.choice(len(dataset.valid_dataset), args.N, replace=False)
-    forget_set = dataset.get_subset(dataset.train_dataset, data_split["unlearn"])
-    retain_set = dataset.get_subset(dataset.train_dataset, data_split["retain"])
-    test_set   = dataset.get_subset(dataset.valid_dataset, data_split["test"])
+    data_split["valid"]   = np.random.choice(data_split["valid"],   args.N, replace=False)
+    forget_set = dataset.get_subset(data_split["unlearn"])
+    # retain_set = dataset.get_subset(data_split["retain"])
+    valid_set  = dataset.get_subset(data_split["valid"])
 
     forget_loader = DataLoader(forget_set, batch_size=1, shuffle=False, num_workers=4)
-    retain_loader = DataLoader(retain_set, batch_size=1, shuffle=False, num_workers=4)
-    test_loader   = DataLoader(test_set,   batch_size=1, shuffle=False, num_workers=4)
+    # retain_loader = DataLoader(retain_set, batch_size=1, shuffle=False, num_workers=4)
+    valid_loader  = DataLoader(valid_set,   batch_size=1, shuffle=False, num_workers=4)
 
-    idxs            = OrderedDict(unlearn = data_split["unlearn"],  retain = data_split["retain"],  test = data_split["test"])
-    unlearn_loaders = OrderedDict(unlearn = forget_loader,          retain = retain_loader,         test = test_loader)
+    idxs            = OrderedDict(unlearn = data_split["unlearn"],  valid = data_split["valid"]) # retain = data_split["retain"],
+    unlearn_loaders = OrderedDict(unlearn = forget_loader,          valid = valid_loader)        # retain = retain_loader,
 
     # Target
     target_model = create_model(model_name=args.model, num_classes=args.num_classes)
@@ -129,10 +129,7 @@ def main():
     for name, loader in unlearn_loaders.items():
         print(name)
         for i, (target_input, target_label) in enumerate(pbar := tqdm(loader)):
-            if (name != "test"):
-                Atk.set_include_exclude(target_idx=idxs[name][i])
-            else:
-                Atk.include, Atk.exclude = [], [j for j in range(args.num_shadow)]
+            Atk.set_include_exclude(target_idx=idxs[name][i])
 
             # Origninal Prediction
             target_input, target_label = target_input.to(DEVICE), target_label.to(DEVICE)
@@ -148,10 +145,10 @@ def main():
     # Interpret results
     time = datetime.now().strftime("%m_%d_%H_%M")
     if (args.atk == "Apollo"):
-        tp, fp, fn, tn = Atk.get_results(target_model, type="under")
-        plot_results(tp, fp, fn, tn, f"{args.atk}-under")
-        tp, fp, fn, tn = Atk.get_results(target_model, type="over")
-        plot_results(tp, fp, fn, tn, f"{args.atk}-over")
+        tp, fp, fn, tn = Atk.get_results(target_model, type="Under")
+        plot_results(tp, fp, fn, tn, f"{args.atk}-Under")
+        tp, fp, fn, tn = Atk.get_results(target_model, type="Over")
+        plot_results(tp, fp, fn, tn, f"{args.atk}-Over")
     else:
         tp, fp, fn, tn = Atk.get_results(target_model)
         plot_results(tp, fp, fn, tn, f"{args.atk}")

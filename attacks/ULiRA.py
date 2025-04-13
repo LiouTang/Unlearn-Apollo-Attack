@@ -38,12 +38,12 @@ class ULiRA(Attack_Framework):
             unlearned_model.eval()
             return unlearned_model
         else:
-            forget_idx = np.array(list( set(self.idxs["unlearn"]).intersection(self.shadow_col[i]) ))
-            retain_idx = np.array(list( set(self.idxs["unlearn"]).difference(self.shadow_col[i])   ))
+            forget_idx = np.array(list( set(self.idxs["unlearn"]).union(set(self.idxs["valid"])).intersection(self.shadow_col[i]) ))
+            retain_idx = np.array(list( set(self.idxs["unlearn"]).union(set(self.idxs["valid"])).difference(self.shadow_col[i])   ))
             print(">>>", forget_idx[:5], retain_idx[:5])
 
-            forget_set = self.dataset.get_subset(self.dataset.train_dataset, forget_idx)
-            retain_set = self.dataset.get_subset(self.dataset.train_dataset, retain_idx)
+            forget_set = self.dataset.get_subset(forget_idx)
+            retain_set = self.dataset.get_subset(retain_idx)
 
             forget_loader = DataLoader(forget_set, batch_size=self.unlearn_args.batch_size, shuffle=True, num_workers=4)
             retain_loader = DataLoader(retain_set, batch_size=self.unlearn_args.batch_size, shuffle=True, num_workers=4)
@@ -87,14 +87,17 @@ class ULiRA(Attack_Framework):
     def get_results(self, target_model, **kwargs):
         tp, fp, fn, tn = [], [], [], []
 
-        for th in tqdm(np.arange(0, 1, 1e-3)):
+        for th in tqdm(np.arange(0, 10, 1e-2)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "test"]:
+            for name in ["unlearn", "valid"]:
                 for i in self.summary[name]:
                     with torch.no_grad():
                         target_output = target_model(self.summary[name][i]["target_input"])
                     target_logit = target_output[0, self.summary[name][i]["target_label"]].item()
-                    p = pr(target_logit, self.summary[name][i]["logit_in"]) / pr(target_logit, self.summary[name][i]["logit_ex"])
+                    if (len(self.summary[name][i]["logit_in"]) == 0) or (len(self.summary[name][i]["logit_ex"]) == 0):
+                        p = 1
+                    else:
+                        p = pr(target_logit, self.summary[name][i]["logit_in"]) / pr(target_logit, self.summary[name][i]["logit_ex"])
 
                     if (name == "unlearn"):
                         _tp += int(p > th)
@@ -106,7 +109,7 @@ class ULiRA(Attack_Framework):
             fp.append(_fp)
             fn.append(_fn)
             tn.append(_tn)
-        return tp, fp, fn, tn
+        return np.array(tp), np.array(fp), np.array(fn), np.array(tn)
 
 def pr(x, obs):
     mean, std = norm.fit(obs)

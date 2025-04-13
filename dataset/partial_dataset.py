@@ -13,41 +13,40 @@ class PartialDataset:
         self.dataset_name = dataset_name
         self.root = root
         self.img_size = img_size
-        self.setting = setting
-        self.train_dataset = Dataset
-        self.valid_dataset = Dataset
+        self.train_idx, self.shadow_idx, self.valid_idx = np.array([]), np.array([]), np.array([])
+        self.train_len, self.shadow_len, self.valid_len, = 0, 0, 0
+        self.full_dataset = Dataset
 
-    def get_subset(self, dataset=None, idx=None) -> Dataset:
-        new_dataset = copy.deepcopy(dataset)
-        new_dataset.data = dataset.data[idx]
+    def get_subset(self, idx=None) -> Dataset:
+        new_dataset = copy.deepcopy(self.full_dataset)
+        new_dataset.data = self.full_dataset.data[idx]
         try:
-            new_dataset.targets = np.array(dataset.targets)[idx]
+            new_dataset.targets = np.array(self.full_dataset.targets)[idx]
         except:
-            new_dataset.labels = np.array(dataset.labels)[idx]
+            new_dataset.labels = np.array(self.full_dataset.labels)[idx]
         return new_dataset
 
-    def set_train_shadow_idx(self, size_train, size_shadow=0, num_shadow=0, split="half", seed=42):
+    def set_train_valid_shadow_idx(self, size_train=0, size_shadow=0, num_shadow=0, split="limited", seed=42):
         utils.random_seed(seed)
 
-        N = len(self.train_dataset)
+        N = len(self.full_dataset)
         full_idx = np.arange(N)
         np.random.shuffle(full_idx)
 
-        train_idx, shadow_idx = full_idx[:(N // 2)], full_idx[(N // 2):]
-        train_idx = np.random.choice(train_idx, size=size_train, replace=False)
+        train_idx  = full_idx[:self.train_len]
+        shadow_idx = full_idx[self.train_len:(self.train_len+self.shadow_len)]
+        valid_idx  = full_idx[(self.train_len+self.shadow_len):]
 
-        shadow_idx_collection = dict()
-        if (split == "half"):
+        self.train_idx = np.random.choice(train_idx, size=size_train, replace=False)
+        self.valid_idx = valid_idx
+        self.shadow_col = dict()
+        if (split == "limited"):
             for i in range(num_shadow):
-                shadow_idx_collection[i] = np.random.choice(shadow_idx, size=size_shadow, replace=False)
+                self.shadow_col[i] = np.random.choice(shadow_idx, size=size_shadow, replace=False)
         elif (split == "full"):
             for i in range(num_shadow):
-                shadow_idx_collection[i] = np.random.choice(full_idx, size=size_shadow, replace=False)
-
-        self.train_idx = train_idx
-        self.shadow_idx_collection = shadow_idx_collection
-
-        print("train:", len(train_idx), train_idx[:5])
+                self.shadow_col[i] = np.random.choice(full_idx, size=size_shadow, replace=False)
+        print("train:", len(self.train_idx), self.train_idx[:5])
 
     def set_unlearn_idx(self, un_perc=None, un_class=None, seed=42):
         utils.random_seed(seed)
@@ -60,23 +59,11 @@ class PartialDataset:
 
         if (un_class != None):
             try:
-                un_mask = np.array(self.train_dataset.targets)[temp_train_idx] == 0
+                un_mask = np.array(self.full_dataset.targets)[temp_train_idx] == 0
             except:
-                un_mask = np.array(self.train_dataset.labels)[temp_train_idx] == 0
+                un_mask = np.array(self.full_dataset.labels)[temp_train_idx] == 0
             unlearn_idx, retain_idx = temp_train_idx[un_mask], temp_train_idx[np.logical_not(un_mask)]
 
         print("unlearn:", len(unlearn_idx), unlearn_idx[:5], "retain", len(retain_idx), retain_idx[:5])
         self.unlearn_idx = unlearn_idx
         self.retain_idx = retain_idx
-    
-    def set_ULiRA_idx(self, num_shadow=0, seed=42):
-        utils.random_seed(seed)
-
-        N = len(self.train_dataset)
-        full_idx = np.arange(N)
-        ULiRA_idx_collection = dict()
-        for i in range(num_shadow):
-            ULiRA_idx_collection[i] = np.random.choice(full_idx, size=int(N // 2), replace=False)
-            print("U-LiRA: ", i, ULiRA_idx_collection[i])
-
-        self.ULiRA_idx_collection = ULiRA_idx_collection

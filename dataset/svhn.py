@@ -12,8 +12,5 @@ from .partial_dataset import PartialDataset
 class PartialSVHN(PartialDataset):
     def __init__(self, root, img_size=32):
         super().__init__("SVHN", root, img_size, "Partial")
-        self.transform_train = transforms.Compose([transforms.ToTensor(), transforms.Resize(img_size, antialias=True)])
-        self.transform_valid = transforms.Compose([transforms.ToTensor(), transforms.Resize(img_size, antialias=True)])
-
-        self.train_dataset = SVHN(root=self.root, split='train', download=True, transform=self.transform_train)
-        self.valid_dataset = SVHN(root=self.root, split='test',  download=True, transform=self.transform_valid)
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Resize(img_size, antialias=True)])
+        self.full_dataset = SVHN(root=self.root, train=True,  download=True, transform=transform)

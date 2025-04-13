@@ -133,10 +133,7 @@ class Apollo(Attack_Framework):
         return None
 
     def get_results(self, target_model, **kwargs):
-        if (kwargs["type"] == "under"):
-            return self.get_results_Under(target_model)
-        elif (kwargs["type"] == "over"):
-            return self.get_results_Over(target_model)
+        return eval(f"self.get_results_{kwargs['type']}")(target_model)
 
     def get_results_Under(self, target_model):
         tp, fp, fn, tn = [], [], [], []
@@ -145,7 +142,7 @@ class Apollo(Attack_Framework):
         print("Calculating Results!")
         for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "test"]:
+            for name in ["unlearn", "valid"]:
                 inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
                 gt     = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0)
 
@@ -176,7 +173,7 @@ class Apollo(Attack_Framework):
         print("Calculating Results!")
         for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "test"]:
+            for name in ["unlearn", "valid"]:
                 inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
                 gt     = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0)
 

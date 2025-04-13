@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--dataset',        type=str,   default='',         help='dataset type (default: ImageFolder/ImageTar if empty)')
     parser.add_argument('--size_shadow',    type=int,   default=2500,       help='size of shadow sets (default: 2500)')
     parser.add_argument('--num_shadow',     type=int,   default=16,         help='number of shadow models (default: 16)')
-    parser.add_argument('--split',          type=str,   default='half',     help='split for sampling shadow models (default: "half")')
+    parser.add_argument('--split',          type=str,   default='limited',  help='split for sampling shadow models (default: "limited")')
 
     parser.add_argument('--model',          type=str,   default='ResNet18', help='Name of model to train (default: "ResNet18"')
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
@@ -49,7 +49,12 @@ def main():
 
     # dataloaders
     dataset = create_dataset(dataset_name=args.dataset, setting="Partial", root=args.data_dir, img_size=args.input_size[-1])
-    dataset.set_train_shadow_idx(size_train=0, size_shadow=args.size_shadow, num_shadow=args.num_shadow, split=args.split)
+    dataset.set_train_valid_shadow_idx(
+        size_train=0,
+        size_shadow=args.size_shadow, num_shadow=args.num_shadow,
+        split=args.split,
+        seed=args.seed
+    )
 
 
     # training
@@ -59,8 +64,8 @@ def main():
         if (os.path.exists(weights_path)):
             continue
 
-        print("shadow:", i, len(dataset.shadow_idx_collection[i]), dataset.shadow_idx_collection[i])
-        shadow_dataset = dataset.get_subset(dataset.train_dataset, dataset.shadow_idx_collection[i])
+        print("shadow:", i, len(dataset.shadow_col[i]), dataset.shadow_col[i])
+        shadow_dataset = dataset.get_subset(dataset.shadow_col[i])
         shadow_loader = DataLoader(shadow_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
         model = create_model(model_name=args.model, num_classes=args.num_classes)
         model.to(DEVICE)
@@ -82,9 +87,7 @@ def main():
                 best_epoch = epoch
         print('*** Best metric: {0} (epoch {1})'.format(best_acc, best_epoch))
 
-    data_split = {
-        "shadow_col":   dataset.shadow_idx_collection,
-    }
+    data_split = {"shadow_col":   dataset.shadow_col}
     with open(os.path.join(save_path, "data_split.pkl"), "wb") as f:
         pkl.dump(data_split, f)
 

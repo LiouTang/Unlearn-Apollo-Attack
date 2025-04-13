@@ -49,22 +49,22 @@ def main():
 
     # dataloaders
     dataset = create_dataset(dataset_name=args.dataset, setting="Partial", root=args.data_dir, img_size=args.input_size[-1])
-    dataset.set_train_shadow_idx(size_train=args.size_train)
-    dataset.set_unlearn_idx(un_perc=args.forget_perc, un_class=args.forget_class)
+    dataset.set_train_valid_shadow_idx(size_train=args.size_train, seed=args.seed)
+    dataset.set_unlearn_idx(un_perc=args.forget_perc, un_class=args.forget_class, seed=args.seed)
 
-    forget_set = dataset.get_subset(dataset.train_dataset, dataset.unlearn_idx)
-    retain_set = dataset.get_subset(dataset.train_dataset, dataset.retain_idx)
-    test_set = dataset.valid_dataset
+    forget_set = dataset.get_subset(dataset.unlearn_idx)
+    retain_set = dataset.get_subset(dataset.retain_idx)
+    valid_set  = dataset.get_subset(dataset.valid_idx)
 
     forget_loader = DataLoader(forget_set, batch_size=args.batch_size, shuffle=True, num_workers=4)
     retain_loader = DataLoader(retain_set, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    valid_loader  = DataLoader(valid_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     unlearn_dataloaders = OrderedDict(
         forget_train = forget_loader,
         retain_train = retain_loader,
         forget_valid = None,
-        retain_valid = test_loader,
+        retain_valid = valid_loader,
     )
 
     # get network
@@ -89,7 +89,7 @@ def main():
         for metr, v in eval_metrics.items():
             eval_result[f"{name} {metr}"] = v
     for mia_metric in ["entropy"]:
-        eval_result[f"{mia_metric} mia"] = get_membership_attack_prob(retain_loader, forget_loader, test_loader, unlearned_model, mia_metric)
+        eval_result[f"{mia_metric} mia"] = get_membership_attack_prob(retain_loader, forget_loader, valid_loader, unlearned_model, mia_metric)
 
     eval_result["time"] = end - start
     eval_result["params"] = unlearn_method.get_params()
@@ -99,6 +99,7 @@ def main():
     torch.save(unlearned_model.state_dict(), os.path.join(save_path, "unlearn.pth.tar"))
     data_split = {
         "train":    dataset.train_idx,
+        "valid":    dataset.valid_idx,
         "unlearn":  dataset.unlearn_idx,
         "retain":   dataset.retain_idx,
     }

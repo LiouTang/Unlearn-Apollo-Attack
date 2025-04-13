@@ -46,13 +46,13 @@ def main():
 
     # dataloaders
     dataset = create_dataset(dataset_name=args.dataset, setting="Partial", root=args.data_dir, img_size=args.input_size[-1])
-    dataset.set_train_shadow_idx(size_train=args.size_train)
+    dataset.set_train_valid_shadow_idx(size_train=args.size_train, seed=args.seed)
 
-    trainset = dataset.get_subset(dataset.train_dataset, dataset.train_idx)
-    test_set = dataset.valid_dataset
+    trainset = dataset.get_subset(dataset.train_idx)
+    validset = dataset.get_subset(dataset.valid_idx)
 
     train_loader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    valid_loader = DataLoader(validset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     # get network
     model = create_model(model_name=args.model, num_classes=args.num_classes)
@@ -70,7 +70,7 @@ def main():
     best_epoch = None 
     for epoch in range(1, args.epochs + 1):
         train_metrics = train(epoch, train_loader, model, loss_function, optimizer)
-        eval_metrics = validate(test_loader, model, loss_function)
+        eval_metrics = validate(valid_loader, model, loss_function)
         scheduler.step()
         utils.update_summary(
             epoch, train_metrics, eval_metrics, os.path.join(save_path, "summary.csv"),
