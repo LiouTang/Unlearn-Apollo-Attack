@@ -27,7 +27,7 @@ def plot_results(tp, fp, fn, tn, title):
     sort = np.argsort(fp)
     tp, fp, fn, tn = tp[sort], fp[sort], fn[sort], tn[sort]
     # print(tp, fp, fn, tn)
-    tpr = tp / (tp + fp)
+    tpr = tp / (tp + fn)
     fpr = fp / (fp + tn)
 
     plt.figure(figsize=(8, 6))

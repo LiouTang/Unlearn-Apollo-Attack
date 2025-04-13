@@ -23,7 +23,7 @@ class ULiRA(Attack_Framework):
         self.unlearned_shadow_models = nn.ModuleList()
         for i in range(self.args.num_shadow):
             self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
-        exit()
+        # exit()
 
     def get_unlearned_model(self, i: int):
         unlearned_model = create_model(model_name=self.args.shadow_model, num_classes=self.args.num_classes)
@@ -92,8 +92,8 @@ class ULiRA(Attack_Framework):
             for name in ["unlearn", "test"]:
                 for i in self.summary[name]:
                     with torch.no_grad():
-                        target_output = target_model(self.summary[name][i])
-                    target_logit = target_output[0, self.summary[name][i]["target_label"]]
+                        target_output = target_model(self.summary[name][i]["target_input"])
+                    target_logit = target_output[0, self.summary[name][i]["target_label"]].item()
                     p = pr(target_logit, self.summary[name][i]["logit_in"]) / pr(target_logit, self.summary[name][i]["logit_ex"])
 
                     if (name == "unlearn"):

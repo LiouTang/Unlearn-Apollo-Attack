@@ -54,7 +54,7 @@ class Apollo(Attack_Framework):
             for i in self.exclude:
                 adv_output = self.shadow_models[i](adv_input)
                 loss_exclude += F.cross_entropy(adv_output, adv_label)
-                loss_db += adv_output.topk(2)[1][0, 0] - adv_output.topk(2)[1][0, 1]
+                loss_db += adv_output.topk(2)[0][0, 0] - adv_output.topk(2)[0][0, 1]
             
             loss_d = F.mse_loss(adv_input, target_input)
             loss = self.args.w[0] * loss_exclude / len(self.exclude) + \
@@ -93,7 +93,7 @@ class Apollo(Attack_Framework):
             for i in self.exclude:
                 adv_output = self.shadow_models[i](adv_input)
                 loss_exclude += F.cross_entropy(adv_output, adv_label)
-                loss_db += adv_output.topk(2)[1][0, 0] - adv_output.topk(2)[1][0, 1]
+                loss_db += adv_output.topk(2)[0][0, 0] - adv_output.topk(2)[0][0, 1]
             
             loss_d = F.mse_loss(adv_input, target_input)
             loss = self.args.w[0] * loss_exclude / len(self.exclude) + \
