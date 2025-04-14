@@ -147,19 +147,19 @@ def main():
     if (args.atk == "Apollo"):
         tp, fp, fn, tn = Atk.get_results(target_model, type="Under")
         results_Under = {"tp": tp, "fp": fp, "fn": tn, "tn": tn}
-        with open(f"{args.atk}-{unlearn_args.unlearn}-Under.pkl") as f:
+        with open(f"{args.atk}-{unlearn_args.unlearn}-Under.pkl", "wb") as f:
             pkl.dump(results_Under, f)
         plot_results(tp, fp, fn, tn, f"{args.atk}-Under")
         
         tp, fp, fn, tn = Atk.get_results(target_model, type="Over")
         results_Under = {"tp": tp, "fp": fp, "fn": tn, "tn": tn}
-        with open(f"{args.atk}-{unlearn_args.unlearn}-Over.pkl") as f:
+        with open(f"{args.atk}-{unlearn_args.unlearn}-Over.pkl", "wb") as f:
             pkl.dump(results_Under, f)
         plot_results(tp, fp, fn, tn, f"{args.atk}-Over")
     else:
         tp, fp, fn, tn = Atk.get_results(target_model)
         results_Under = {"tp": tp, "fp": fp, "fn": tn, "tn": tn}
-        with open(f"{args.atk}-{unlearn_args.unlearn}") as f:
+        with open(f"{args.atk}-{unlearn_args.unlearn}.pkl", "wb") as f:
             pkl.dump(results_Under, f)
         plot_results(tp, fp, fn, tn, f"{args.atk}")
 

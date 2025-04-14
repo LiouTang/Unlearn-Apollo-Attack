@@ -134,7 +134,7 @@ class Apollo(Attack_Framework):
     def get_results_Under(self, target_model):
         tp, fp, fn, tn = [], [], [], []
 
-        print(self.max_dist)
+        # print(self.max_dist)
         print("Calculating Results!")
         for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
@@ -166,7 +166,7 @@ class Apollo(Attack_Framework):
     def get_results_Over(self, target_model):
         tp, fp, fn, tn = [], [], [], []
 
-        print(self.max_dist)
+        # print(self.max_dist)
         print("Calculating Results!")
         for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
