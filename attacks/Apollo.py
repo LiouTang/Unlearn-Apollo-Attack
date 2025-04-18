@@ -143,8 +143,8 @@ class Apollo(Attack_Framework):
                 gt     = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0)
 
                 under_adv = torch.cat([self.summary[name][i]["under_adv_input"] for i in self.summary[name]], dim=0)
-                diff, norm = normalize(under_adv - inputs)
-                under_eps = inputs + diff * torch.clamp_max(norm, eps)
+                diff, _ = normalize(under_adv - inputs)
+                under_eps = inputs + diff * eps
 
                 with torch.no_grad():
                     under_outputs = target_model(under_eps)
@@ -175,8 +175,8 @@ class Apollo(Attack_Framework):
                 gt     = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0)
 
                 over_adv  = torch.cat([self.summary[name][i]["over_adv_input"]  for i in self.summary[name]], dim=0)
-                diff, norm = normalize(over_adv - inputs)
-                over_eps = inputs + diff * torch.clamp_max(norm, eps)
+                diff, _ = normalize(over_adv - inputs)
+                over_eps = inputs + diff * eps
 
                 with torch.no_grad():
                     over_outputs  = target_model(over_eps)
