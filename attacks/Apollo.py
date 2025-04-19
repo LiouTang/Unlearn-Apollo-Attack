@@ -48,18 +48,22 @@ class Apollo(Attack_Framework):
         for epoch in range(self.args.atk_epochs):
             loss = 0.0
             optimizer.zero_grad()
-            loss_exclude, loss_d, loss_db = 0.0, 0.0, 0.0
 
-            # Only consider exclude
+            loss_include, loss_exclude, loss_d = 0.0, 0.0, 0.0
+            # unlearned model (x in unlearned set) x' --> y
+            for i in self.include:
+                adv_output = self.shadow_models[i](adv_input)
+                loss_include += F.cross_entropy(adv_output, target_label)
+            # retrained model (x not in unlearned set) x' --> y'
             for i in self.exclude:
                 adv_output = self.shadow_models[i](adv_input)
                 loss_exclude += F.cross_entropy(adv_output, adv_label)
-                loss_db += adv_output.topk(2)[0][0, 0] - adv_output.topk(2)[0][0, 1]
-            
+            # distance to target (locality)
             loss_d = F.mse_loss(adv_input, target_input)
-            loss = self.args.w[0] * loss_exclude / len(self.exclude) + \
-                   self.args.w[1] * loss_d + \
-                   self.args.w[2] * loss_db / len(self.exclude)
+
+            loss = self.args.w[0] * loss_include / len(self.include) + \
+                   self.args.w[1] * loss_exclude / len(self.exclude) + \
+                   self.args.w[2] * loss_d
             loss.backward()
             optimizer.step()
             torch.clamp(adv_input, min=0, max=1) # Image data
@@ -87,18 +91,22 @@ class Apollo(Attack_Framework):
         for epoch in range(self.args.atk_epochs):
             loss = 0.0
             optimizer.zero_grad()
-            loss_exclude, loss_d, loss_db = 0.0, 0.0, 0.0
 
-            # Only consider exclude
+            loss_include, loss_exclude, loss_d = 0.0, 0.0, 0.0
+            # unlearned model (x in unlearned set) x' --> y'
+            for i in self.include:
+                adv_output = self.shadow_models[i](adv_input)
+                loss_include += F.cross_entropy(adv_output, adv_label)
+            # retrained model (x not in unlearned set) x' --> y
             for i in self.exclude:
                 adv_output = self.shadow_models[i](adv_input)
-                loss_exclude += F.cross_entropy(adv_output, adv_label)
-                loss_db += adv_output.topk(2)[0][0, 0] - adv_output.topk(2)[0][0, 1]
-            
+                loss_exclude += F.cross_entropy(adv_output, target_label)
+            # distance to target (locality)
             loss_d = F.mse_loss(adv_input, target_input)
-            loss = self.args.w[0] * loss_exclude / len(self.exclude) + \
-                   self.args.w[1] * loss_d + \
-                   self.args.w[2] * loss_db / len(self.exclude)
+
+            loss = self.args.w[0] * loss_include / len(self.include) + \
+                   self.args.w[1] * loss_exclude / len(self.exclude) + \
+                   self.args.w[2] * loss_d
             loss.backward()
             optimizer.step()
             torch.clamp(adv_input, min=0, max=1) # Image data
@@ -134,7 +142,6 @@ class Apollo(Attack_Framework):
     def get_results_Under(self, target_model):
         tp, fp, fn, tn = [], [], [], []
 
-        # print(self.max_dist)
         print("Calculating Results!")
         for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
@@ -166,7 +173,6 @@ class Apollo(Attack_Framework):
     def get_results_Over(self, target_model):
         tp, fp, fn, tn = [], [], [], []
 
-        # print(self.max_dist)
         print("Calculating Results!")
         for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
