@@ -25,49 +25,12 @@ class ULiRA(Attack_Framework):
             self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
         # exit()
 
-    def get_unlearned_model(self, i: int):
-        unlearned_model = create_model(model_name=self.args.shadow_model, num_classes=self.args.num_classes)
-        save_path = os.path.join(self.args.shadow_path, f"{self.unlearn_args.size_train}-{self.unlearn_args.unlearn}-{self.args.N}")
-        if not os.path.exists(save_path):
-            os.makedirs(save_path)
-        weights_path = os.path.join(save_path, f"{i}.pth.tar")
-
-        if os.path.exists(weights_path):
-            unlearned_model.load_state_dict(torch.load(weights_path, map_location=DEVICE, weights_only=True))
-            unlearned_model.to(DEVICE)
-            unlearned_model.eval()
-            return unlearned_model
-        else:
-            forget_idx = np.array(list( set(self.idxs["unlearn"]).union(set(self.idxs["valid"])).intersection(self.shadow_col[i]) ))
-            retain_idx = np.array(list( set(self.idxs["unlearn"]).union(set(self.idxs["valid"])).difference(self.shadow_col[i])   ))
-            print(">>>", forget_idx[:5], retain_idx[:5])
-
-            forget_set = self.dataset.get_subset(forget_idx)
-            retain_set = self.dataset.get_subset(retain_idx)
-
-            forget_loader = DataLoader(forget_set, batch_size=self.unlearn_args.batch_size, shuffle=True, num_workers=4)
-            retain_loader = DataLoader(retain_set, batch_size=self.unlearn_args.batch_size, shuffle=True, num_workers=4)
-
-            unlearn_dataloaders = OrderedDict(
-                forget_train = forget_loader, retain_train = retain_loader,
-                forget_valid = None, retain_valid = None,
-            )
-
-            if not os.path.exists(os.path.join(save_path, f"{i}")):
-                os.makedirs(os.path.join(save_path, f"{i}"))
-            unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], self.CE, os.path.join(save_path, f"{i}"), self.unlearn_args)
-            unlearn_method.prepare_unlearn(unlearn_dataloaders)
-            unlearned_model = unlearn_method.get_unlearned_model()
-            torch.save(unlearned_model.state_dict(), weights_path)
-
-            return unlearned_model
-
     def update_atk_summary(self, name, target_input, target_label, idx):
         if (not name in self.summary):
             self.summary[name] = dict()
         logit_in, logit_ex = [], []
         for i in self.include:
-            model = self.get_unlearned_model(i)
+            model = self.unlearned_shadow_models[i]
             with torch.no_grad():
                 output = model(target_input)
             logit_in.append(output[0, target_label.item()].item())

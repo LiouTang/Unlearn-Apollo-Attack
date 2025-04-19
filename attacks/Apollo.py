@@ -15,6 +15,9 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Apollo(Attack_Framework):
     def __init__(self, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
         super().__init__(dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
+        self.unlearned_shadow_models = nn.ModuleList()
+        for i in range(self.args.num_shadow):
+            self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
         self.max_dist = 0.0
 
     def get_near_miss_label(self, target_input, target_label):
@@ -52,7 +55,7 @@ class Apollo(Attack_Framework):
             loss_include, loss_exclude, loss_d = 0.0, 0.0, 0.0
             # unlearned model (x in unlearned set) x' --> y
             for i in self.include:
-                adv_output = self.shadow_models[i](adv_input)
+                adv_output = self.unlearned_shadow_models[i](adv_input)
                 loss_include += F.cross_entropy(adv_output, target_label)
             # retrained model (x not in unlearned set) x' --> y'
             for i in self.exclude:
@@ -95,7 +98,7 @@ class Apollo(Attack_Framework):
             loss_include, loss_exclude, loss_d = 0.0, 0.0, 0.0
             # unlearned model (x in unlearned set) x' --> y'
             for i in self.include:
-                adv_output = self.shadow_models[i](adv_input)
+                adv_output = self.unlearned_shadow_models[i](adv_input)
                 loss_include += F.cross_entropy(adv_output, adv_label)
             # retrained model (x not in unlearned set) x' --> y
             for i in self.exclude:
