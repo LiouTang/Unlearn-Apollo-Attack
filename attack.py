@@ -1,17 +1,13 @@
 import os
 import argparse
-import time
 import numpy as np
 from collections import OrderedDict
 import pickle as pkl
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from datetime import datetime
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 from torch.utils.data import DataLoader
 
 import utils
@@ -32,11 +28,11 @@ def plot_results(tp, fp, fn, tn, ths, title):
 
     plt.figure(figsize=(8, 6))
     plt.scatter(fpr, tpr, c=ths, label='ROC (step curve)')
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
     plt.colorbar()
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.grid(True)
-    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
     # plt.legend()
     plt.title(title)
     plt.savefig("./Figs/" + title + ".pdf")
@@ -143,25 +139,14 @@ def main():
         # summary = Atk.get_atk_summary()
 
     # Interpret results
-    time = datetime.now().strftime("%m_%d_%H_%M")
-    if (args.atk == "Apollo"):
-        tp, fp, fn, tn, ths = Atk.get_results(target_model, type="Under")
-        results_Under = {"tp": tp, "fp": fp, "fn": tn, "tn": tn}
-        with open(f"{args.atk}-{unlearn_args.unlearn}-Under.pkl", "wb") as f:
-            pkl.dump(results_Under, f)
-        plot_results(tp, fp, fn, tn, ths, f"{args.atk}-Under")
-        
-        tp, fp, fn, tn, ths = Atk.get_results(target_model, type="Over")
-        results_Under = {"tp": tp, "fp": fp, "fn": tn, "tn": tn}
-        with open(f"{args.atk}-{unlearn_args.unlearn}-Over.pkl", "wb") as f:
-            pkl.dump(results_Under, f)
-        plot_results(tp, fp, fn, tn, ths, f"{args.atk}-Over")
-    else:
-        tp, fp, fn, tn, ths = Atk.get_results(target_model)
-        results_Under = {"tp": tp, "fp": fp, "fn": tn, "tn": tn}
-        with open(f"{args.atk}-{unlearn_args.unlearn}.pkl", "wb") as f:
-            pkl.dump(results_Under, f)
-        plot_results(tp, fp, fn, tn, ths, f"{args.atk}")
+    if (not os.path.exists("./Results/")):
+        os.makedirs("./Results")
+    for type in Atk.types:
+        tp, fp, fn, tn, ths = Atk.get_results(target_model, type=type)
+        results = {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "ths": ths}
+        with open(f"./Results/{args.atk}-{unlearn_args.unlearn}-{type}.pkl", "wb") as f:
+            pkl.dump(results, f)
+        # plot_results(tp, fp, fn, tn, ths, f"{args.atk}-{unlearn_args.unlearn}-{type}")
 
 if __name__ == '__main__':
     main()

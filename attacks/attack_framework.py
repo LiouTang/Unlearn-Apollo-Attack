@@ -28,6 +28,7 @@ class Attack_Framework():
             self.shadow_col[i] = set(shadow_col[i])
         self.unlearn_args = unlearn_args
 
+        self.types = [""]
         self.summary = dict()
         self.CE = nn.CrossEntropyLoss()
 

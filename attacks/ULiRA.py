@@ -49,7 +49,7 @@ class ULiRA(Attack_Framework):
     
     def get_results(self, target_model, **kwargs):
         tp, fp, fn, tn = [], [], [], []
-        ths = np.arange(0, 2, 1e-3)
+        ths = np.arange(-2, 2, 1e-2)
 
         for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0

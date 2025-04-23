@@ -15,6 +15,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Apollo(Attack_Framework):
     def __init__(self, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
         super().__init__(dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
+        self.types = ["Under", "Over"]
         self.unlearned_shadow_models = nn.ModuleList()
         for i in range(self.args.num_shadow):
             self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
@@ -144,7 +145,7 @@ class Apollo(Attack_Framework):
 
     def get_results_Under(self, target_model):
         tp, fp, fn, tn = [], [], [], []
-        ths = self.max_dist * np.arange(0, 2, 1e-3)
+        ths = self.max_dist * np.arange(-2, 2, 1e-2)
 
         print("Calculating Results!")
         for th in tqdm(ths):
@@ -176,7 +177,7 @@ class Apollo(Attack_Framework):
 
     def get_results_Over(self, target_model):
         tp, fp, fn, tn = [], [], [], []
-        ths = self.max_dist * np.arange(0, 2, 1e-3)
+        ths = self.max_dist * np.arange(-2, 2, 1e-2)
 
         print("Calculating Results!")
         for th in tqdm(ths):
