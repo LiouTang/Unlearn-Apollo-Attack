@@ -49,8 +49,9 @@ class ULiRA(Attack_Framework):
     
     def get_results(self, target_model, **kwargs):
         tp, fp, fn, tn = [], [], [], []
+        ths = np.arange(0, 2, 1e-3)
 
-        for th in tqdm(np.arange(0, 10, 1e-2)):
+        for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "valid"]:
                 for i in self.summary[name]:
@@ -72,7 +73,7 @@ class ULiRA(Attack_Framework):
             fp.append(_fp)
             fn.append(_fn)
             tn.append(_tn)
-        return np.array(tp), np.array(fp), np.array(fn), np.array(tn)
+        return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
 
 def pr(x, obs):
     mean, std = norm.fit(obs)

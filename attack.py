@@ -21,7 +21,7 @@ from dataset import create_dataset
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def plot_results(tp, fp, fn, tn, title):
+def plot_results(tp, fp, fn, tn, ths, title):
     if not os.path.exists("./Figs/"):
         os.makedirs("./Figs/")
     sort = np.argsort(fp)
@@ -31,13 +31,13 @@ def plot_results(tp, fp, fn, tn, title):
     fpr = fp / (fp + tn)
 
     plt.figure(figsize=(8, 6))
-    plt.scatter(fpr, tpr, label='ROC (step curve)')
+    plt.scatter(fpr, tpr, c=ths, label='ROC (step curve)')
+    plt.colorbar()
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve (Step)')
     plt.grid(True)
     plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
-    plt.legend()
+    # plt.legend()
     plt.title(title)
     plt.savefig("./Figs/" + title + ".pdf")
     return
@@ -145,23 +145,23 @@ def main():
     # Interpret results
     time = datetime.now().strftime("%m_%d_%H_%M")
     if (args.atk == "Apollo"):
-        tp, fp, fn, tn = Atk.get_results(target_model, type="Under")
+        tp, fp, fn, tn, ths = Atk.get_results(target_model, type="Under")
         results_Under = {"tp": tp, "fp": fp, "fn": tn, "tn": tn}
         with open(f"{args.atk}-{unlearn_args.unlearn}-Under.pkl", "wb") as f:
             pkl.dump(results_Under, f)
-        plot_results(tp, fp, fn, tn, f"{args.atk}-Under")
+        plot_results(tp, fp, fn, tn, ths, f"{args.atk}-Under")
         
-        tp, fp, fn, tn = Atk.get_results(target_model, type="Over")
+        tp, fp, fn, tn, ths = Atk.get_results(target_model, type="Over")
         results_Under = {"tp": tp, "fp": fp, "fn": tn, "tn": tn}
         with open(f"{args.atk}-{unlearn_args.unlearn}-Over.pkl", "wb") as f:
             pkl.dump(results_Under, f)
-        plot_results(tp, fp, fn, tn, f"{args.atk}-Over")
+        plot_results(tp, fp, fn, tn, ths, f"{args.atk}-Over")
     else:
-        tp, fp, fn, tn = Atk.get_results(target_model)
+        tp, fp, fn, tn, ths = Atk.get_results(target_model)
         results_Under = {"tp": tp, "fp": fp, "fn": tn, "tn": tn}
         with open(f"{args.atk}-{unlearn_args.unlearn}.pkl", "wb") as f:
             pkl.dump(results_Under, f)
-        plot_results(tp, fp, fn, tn, f"{args.atk}")
+        plot_results(tp, fp, fn, tn, ths, f"{args.atk}")
 
 if __name__ == '__main__':
     main()

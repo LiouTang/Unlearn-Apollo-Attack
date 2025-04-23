@@ -144,9 +144,10 @@ class Apollo(Attack_Framework):
 
     def get_results_Under(self, target_model):
         tp, fp, fn, tn = [], [], [], []
+        ths = self.max_dist * np.arange(0, 2, 1e-3)
 
         print("Calculating Results!")
-        for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
+        for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "valid"]:
                 inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
@@ -154,10 +155,10 @@ class Apollo(Attack_Framework):
 
                 under_adv = torch.cat([self.summary[name][i]["under_adv_input"] for i in self.summary[name]], dim=0)
                 diff, _ = normalize(under_adv - inputs)
-                under_eps = inputs + diff * eps
+                under_adv = inputs + diff * th
 
                 with torch.no_grad():
-                    under_outputs = target_model(under_eps)
+                    under_outputs = target_model(under_adv)
                 under_pred = under_outputs.max(1)[1]
                 # print(eps, name,  under_pred)
 
@@ -171,13 +172,14 @@ class Apollo(Attack_Framework):
             fp.append(_fp)
             fn.append(_fn)
             tn.append(_tn)
-        return np.array(tp), np.array(fp), np.array(fn), np.array(tn)
+        return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
 
     def get_results_Over(self, target_model):
         tp, fp, fn, tn = [], [], [], []
+        ths = self.max_dist * np.arange(0, 2, 1e-3)
 
         print("Calculating Results!")
-        for eps in tqdm(np.arange(0, self.max_dist * 2, 1e-3)):
+        for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "valid"]:
                 inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
@@ -185,10 +187,10 @@ class Apollo(Attack_Framework):
 
                 over_adv  = torch.cat([self.summary[name][i]["over_adv_input"]  for i in self.summary[name]], dim=0)
                 diff, _ = normalize(over_adv - inputs)
-                over_eps = inputs + diff * eps
+                over_adv = inputs + diff * th
 
                 with torch.no_grad():
-                    over_outputs  = target_model(over_eps)
+                    over_outputs  = target_model(over_adv)
                 over_pred  = over_outputs.max(1)[1]
                 # print(eps, name, over_pred)
 
@@ -202,7 +204,7 @@ class Apollo(Attack_Framework):
             fp.append(_fp)
             fn.append(_fn)
             tn.append(_tn)
-        return np.array(tp), np.array(fp), np.array(fn), np.array(tn)
+        return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
 
 def normalize(tensor):
     norm = torch.norm(tensor, p=2, dim=-1, keepdim=True)
