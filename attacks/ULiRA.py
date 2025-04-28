@@ -18,8 +18,8 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class ULiRA(Attack_Framework):
-    def __init__(self, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
-        super().__init__(dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
+    def __init__(self, target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
+        super().__init__(target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
         self.unlearned_shadow_models = nn.ModuleList()
         for i in range(self.args.num_shadow):
             self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
@@ -47,7 +47,7 @@ class ULiRA(Attack_Framework):
         }
         return None
     
-    def get_results(self, target_model, **kwargs):
+    def get_results(self, **kwargs):
         tp, fp, fn, tn = [], [], [], []
         ths = np.arange(-2, 2, 1e-2)
 
@@ -56,7 +56,7 @@ class ULiRA(Attack_Framework):
             for name in ["unlearn", "valid"]:
                 for i in self.summary[name]:
                     with torch.no_grad():
-                        target_output = target_model(self.summary[name][i]["target_input"])
+                        target_output = self.target_model(self.summary[name][i]["target_input"])
                     target_logit = target_output[0, self.summary[name][i]["target_label"]].item()
                     if (len(self.summary[name][i]["logit_in"]) == 0) or (len(self.summary[name][i]["logit_ex"]) == 0):
                         p = 1

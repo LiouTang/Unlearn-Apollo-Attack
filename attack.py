@@ -105,8 +105,8 @@ def main():
         model.load_state_dict(torch.load(weights_path, map_location=DEVICE, weights_only=True))
         model.to(DEVICE)
         model.eval()
-    
         shadow_models.append(model)
+
     with open(os.path.join(args.shadow_path, "data_split.pkl"), "rb") as f:
         data_split = pkl.load(f)
     print(data_split.items())
@@ -114,35 +114,30 @@ def main():
 
     # Attack!
     Atk = attacks.get_attack(
+        target_model=target_model,
         dataset=dataset,
         name=args.atk,
         shadow_models=shadow_models,
         args=args,
         idxs=idxs,
         shadow_col=data_split["shadow_col"],
-        unlearn_args=unlearn_args
+        unlearn_args=unlearn_args,
     )
     for name, loader in unlearn_loaders.items():
         print(name)
         for i, (target_input, target_label) in enumerate(pbar := tqdm(loader)):
             Atk.set_include_exclude(target_idx=idxs[name][i])
 
-            # Origninal Prediction
             target_input, target_label = target_input.to(DEVICE), target_label.to(DEVICE)
-            with torch.no_grad():
-                output = target_model(target_input)
-            pred = output.max(1)[1]
-
             Atk.update_atk_summary(name, target_input, target_label, idxs[name][i])
             if (args.debug):
                 return
-        # summary = Atk.get_atk_summary()
 
     # Interpret results
     if (not os.path.exists("./Results/")):
         os.makedirs("./Results")
     for type in Atk.types:
-        tp, fp, fn, tn, ths = Atk.get_results(target_model, type=type)
+        tp, fp, fn, tn, ths = Atk.get_results(type=type)
         results = {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "ths": ths}
         with open(f"./Results/{args.atk}-{unlearn_args.unlearn}-{type}.pkl", "wb") as f:
             pkl.dump(results, f)

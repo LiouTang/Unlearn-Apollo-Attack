@@ -13,13 +13,13 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class Apollo(Attack_Framework):
-    def __init__(self, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
-        super().__init__(dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
+    def __init__(self, target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
+        super().__init__(target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
         self.types = ["Under", "Over"]
         self.unlearned_shadow_models = nn.ModuleList()
         for i in range(self.args.num_shadow):
             self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
-        self.max_dist = 0.0
+        self.eps = 80 / 255
 
     def get_near_miss_label(self, target_input, target_label):
         min_loss_label = None
@@ -31,7 +31,7 @@ class Apollo(Attack_Framework):
             sum_loss = 0
             for i in self.exclude:
                 adv_output = self.shadow_models[i](target_input)
-                loss = self.CE(adv_output, torch.Tensor([label]).to(torch.int64).to(DEVICE))
+                loss = self.ce(adv_output, torch.Tensor([label]).to(torch.int64).to(DEVICE))
                 sum_loss += loss.item()
 
             if (min_loss == None):
@@ -40,173 +40,166 @@ class Apollo(Attack_Framework):
                 min_loss, min_loss_label = sum_loss, label
         return torch.Tensor([min_loss_label]).to(torch.int64).to(DEVICE)
 
+    def loss(self, input, label_og, label_un, label_rt):
+        loss_og, loss_un, loss_rt = 0.0, 0.0, 0.0
+        for i in self.include:
+            output = self.shadow_models[i](input)
+            loss_og += self.ce(output, label_og)
+
+        for i in self.include:
+            output = self.unlearned_shadow_models[i](input)
+            loss_un += self.ce(output, label_un)
+        
+        for i in self.exclude:
+            output = self.unlearned_shadow_models[i](input)
+            loss_rt += self.ce(output, label_rt)
+        
+        return  self.args.w[0] * loss_og / len(self.include) + \
+                self.args.w[1] * loss_un / len(self.include) + \
+                self.args.w[2] * loss_rt / len(self.include)
+
     def Under_Un_Adv(self, target_input, target_label):
         # Under-Unlearning: Given target (x, y), adv. input x',
+        # original model (x in train set) x' --> y
         # unlearned model (x in unlearned set) x' --> y
-        # retrained model (x not in unlearned set) x' --> y' --> Find the nearest (x', y')
+        # retrained model (x not in unlearned set) x' --> y'
         adv_input = target_input.detach().clone().to(DEVICE)
         adv_input.requires_grad = True
         adv_label = self.get_near_miss_label(target_input, target_label)
         optimizer = torch.optim.SGD([adv_input], lr=self.args.atk_lr)
 
+        conf, pred = [], []
         for epoch in range(self.args.atk_epochs):
-            loss = 0.0
             optimizer.zero_grad()
-
-            loss_include, loss_exclude, loss_d = 0.0, 0.0, 0.0
-            # unlearned model (x in unlearned set) x' --> y
-            for i in self.include:
-                adv_output = self.unlearned_shadow_models[i](adv_input)
-                loss_include += F.cross_entropy(adv_output, target_label)
-            # retrained model (x not in unlearned set) x' --> y'
-            for i in self.exclude:
-                adv_output = self.shadow_models[i](adv_input)
-                loss_exclude += F.cross_entropy(adv_output, adv_label)
-            # distance to target (locality)
-            loss_d = F.mse_loss(adv_input, target_input)
-
-            loss = self.args.w[0] * loss_include / len(self.include) + \
-                   self.args.w[1] * loss_exclude / len(self.exclude) + \
-                   self.args.w[2] * loss_d
+            loss = self.loss(adv_input, target_label, target_label, adv_label)
             loss.backward()
             optimizer.step()
-            torch.clamp(adv_input, min=0, max=1) # Image data
-            if (loss.item() < .2):
-                break
-        adv_input = adv_input.clone().detach()
 
-        if (self.args.debug):
-            include_labels, exclude_labels = self.get_labels(adv_input)
-            print(self.include, self.exclude)
-            print(">>>>>>>>>>", target_label, adv_label)
-            print("include_labels: ", include_labels)
-            print("exclude_labels: ", exclude_labels)
-        return adv_input, torch.norm(target_input - adv_input, p=2).item()
+            with torch.no_grad():
+                projected = proj(target_input, adv_input.data, self.eps * (epoch + 1) / (self.args.atk_epochs))
+                adv_input.data.copy_(projected)
+                adv_input.data.clamp_(0.0, 1.0)
+            # adv_input = proj(target_input, adv_input, self.eps * (epoch + 1) / (self.args.atk_epochs))
+            # torch.clamp(adv_input, min=0, max=1) # Image data
+
+            with torch.no_grad():
+                adv_output = self.target_model(adv_input)
+            pred.append(adv_output.max(1)[1].item())
+            conf.append(F.softmax(adv_output, dim=1)[0, target_label].item()) # Confidence on target label
+        return conf, pred
 
     def Over_Un_Adv(self, target_input, target_label):
         # Over-Unlearning: Given target (x, y), adv. input x',
+        # original model (x in train set) x' --> y
         # unlearned model (x in unlearned set) x' --> y'
-        # retrained model (x not in unlearned set) x' --> y --> Find the nearest (x', y)
+        # retrained model (x not in unlearned set) x' --> y
         adv_input = target_input.detach().clone().to(DEVICE)
         adv_input.requires_grad = True
         adv_label = target_label.to(torch.int64).to(DEVICE)
         optimizer = torch.optim.SGD([adv_input], lr=self.args.atk_lr)
 
+        conf, pred = [], []
         for epoch in range(self.args.atk_epochs):
-            loss = 0.0
             optimizer.zero_grad()
-
-            loss_include, loss_exclude, loss_d = 0.0, 0.0, 0.0
-            # unlearned model (x in unlearned set) x' --> y'
-            for i in self.include:
-                adv_output = self.unlearned_shadow_models[i](adv_input)
-                loss_include += F.cross_entropy(adv_output, adv_label)
-            # retrained model (x not in unlearned set) x' --> y
-            for i in self.exclude:
-                adv_output = self.shadow_models[i](adv_input)
-                loss_exclude += F.cross_entropy(adv_output, target_label)
-            # distance to target (locality)
-            loss_d = F.mse_loss(adv_input, target_input)
-
-            loss = self.args.w[0] * loss_include / len(self.include) + \
-                   self.args.w[1] * loss_exclude / len(self.exclude) + \
-                   self.args.w[2] * loss_d
+            loss = self.loss(adv_input, target_label, adv_label, target_label)
             loss.backward()
             optimizer.step()
-            torch.clamp(adv_input, min=0, max=1) # Image data
-            if (loss.item() < .2):
-                break
-        adv_input = adv_input.clone().detach()
 
-        if (self.args.debug):
-            include_labels, exclude_labels = self.get_labels(adv_input)
-            print(self.include, self.exclude)
-            print(">>>>>>>>>>", target_label, adv_label)
-            print("include_labels: ", include_labels)
-            print("exclude_labels: ", exclude_labels)
-        return adv_input, torch.norm(target_input - adv_input, p=2).item()
+            with torch.no_grad():
+                projected = proj(target_input, adv_input.data, self.eps * (epoch + 1) / (self.args.atk_epochs))
+                adv_input.data.copy_(projected)
+                adv_input.data.clamp_(0.0, 1.0)
+
+            with torch.no_grad():
+                adv_output = self.target_model(adv_input)
+            pred.append(adv_output.max(1)[1].item())
+            conf.append(F.softmax(adv_output, dim=1)[0, target_label].item()) # Confidence on target label
+        return conf, pred
 
     def update_atk_summary(self, name, target_input, target_label, idx):
         if (not name in self.summary):
             self.summary[name] = dict()
-        under_adv_input, under_dist = self.Under_Un_Adv(target_input, target_label)
-        over_adv_input,  over_dist  = self.Over_Un_Adv(target_input, target_label)
-        self.max_dist = max(max(self.max_dist, under_dist), over_dist)
+        un_conf, un_pred = self.Under_Un_Adv(target_input, target_label)
+        ov_conf, ov_pred = self.Over_Un_Adv(target_input, target_label)
         self.summary[name][idx] = {
-            "target_input"      : target_input,
-            "target_label"      : target_label,
-            "under_adv_input"   : under_adv_input,
-            "over_adv_input"    : over_adv_input,
+            "target_input"  : target_input,
+            "target_label"  : target_label,
+            "un_conf"       : un_conf,
+            "un_pred"       : un_pred,
+            "ov_conf"       : ov_conf,
+            "ov_pred"       : ov_pred,
         }
         return None
 
-    def get_results(self, target_model, **kwargs):
-        return eval(f"self.get_results_{kwargs['type']}")(target_model)
+    def get_results(self, **kwargs):
+        return eval(f"self.get_results_{kwargs['type']}")()
 
-    def get_results_Under(self, target_model):
+    def get_results_Under(self):
         tp, fp, fn, tn = [], [], [], []
-        ths = self.max_dist * np.arange(-2, 2, 1e-2)
+        ths = np.arange(0, 1, 1e-2)
 
         print("Calculating Results!")
-        for th in tqdm(ths):
-            _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "valid"]:
-                inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
-                gt     = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0)
+        for name in ["unlearn", "valid"]:
+            gt      = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
+            conf    = np.array([self.summary[name][i]["un_conf"] for i in self.summary[name]])
+            pred    = np.array([self.summary[name][i]["un_pred"] for i in self.summary[name]])
 
-                under_adv = torch.cat([self.summary[name][i]["under_adv_input"] for i in self.summary[name]], dim=0)
-                diff, _ = normalize(under_adv - inputs)
-                under_adv = inputs + diff * th
+            for th in tqdm(ths):
+                _tp, _fp, _fn, _tn = 0, 0, 0, 0
 
-                with torch.no_grad():
-                    under_outputs = target_model(under_adv)
-                under_pred = under_outputs.max(1)[1]
-                # print(eps, name,  under_pred)
+                idx = np.where((conf < th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
+                idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
+                # conf_th = conf[np.arange(self.args.N), idx]
+                pred_th = pred[np.arange(self.args.N), idx]
 
                 if (name == "unlearn"):
-                    _tp += np.sum( (under_pred.cpu().numpy() == gt.cpu().numpy()) )
-                    _fn += np.sum( (under_pred.cpu().numpy() != gt.cpu().numpy()) )
+                    _tp += np.sum(pred_th == gt)
+                    _fn += np.sum(pred_th != gt)
                 else:
-                    _fp += np.sum( (under_pred.cpu().numpy() == gt.cpu().numpy()) )
-                    _tn += np.sum( (under_pred.cpu().numpy() != gt.cpu().numpy()) )
-            tp.append(_tp)
-            fp.append(_fp)
-            fn.append(_fn)
-            tn.append(_tn)
+                    _fp += np.sum(pred_th == gt)
+                    _tn += np.sum(pred_th != gt)
+                tp.append(_tp)
+                fp.append(_fp)
+                fn.append(_fn)
+                tn.append(_tn)
         return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
 
-    def get_results_Over(self, target_model):
+    def get_results_Over(self):
         tp, fp, fn, tn = [], [], [], []
-        ths = self.max_dist * np.arange(-2, 2, 1e-2)
+        ths = np.arange(0, 1, 1e-2)
 
         print("Calculating Results!")
-        for th in tqdm(ths):
-            _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "valid"]:
-                inputs = torch.cat([self.summary[name][i]["target_input"] for i in self.summary[name]], dim=0)
-                gt     = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0)
+        for name in ["unlearn", "valid"]:
+            gt      = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
+            conf    = np.array([self.summary[name][i]["un_conf"] for i in self.summary[name]])
+            pred    = np.array([self.summary[name][i]["un_pred"] for i in self.summary[name]])
 
-                over_adv  = torch.cat([self.summary[name][i]["over_adv_input"]  for i in self.summary[name]], dim=0)
-                diff, _ = normalize(over_adv - inputs)
-                over_adv = inputs + diff * th
+            for th in tqdm(ths):
+                _tp, _fp, _fn, _tn = 0, 0, 0, 0
 
-                with torch.no_grad():
-                    over_outputs  = target_model(over_adv)
-                over_pred  = over_outputs.max(1)[1]
-                # print(eps, name, over_pred)
+                idx = np.where((conf < th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
+                idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
+                # conf_th = conf[np.arange(self.args.N), idx]
+                pred_th = pred[np.arange(self.args.N), idx]
 
                 if (name == "unlearn"):
-                    _tp += np.sum( (over_pred.cpu().numpy() != gt.cpu().numpy()) )
-                    _fn += np.sum( (over_pred.cpu().numpy() == gt.cpu().numpy()) )
+                    _tp += np.sum(pred_th != gt)
+                    _fn += np.sum(pred_th == gt)
                 else:
-                    _fp += np.sum( (over_pred.cpu().numpy() != gt.cpu().numpy()) )
-                    _tn += np.sum( (over_pred.cpu().numpy() == gt.cpu().numpy()) )
-            tp.append(_tp)
-            fp.append(_fp)
-            fn.append(_fn)
-            tn.append(_tn)
+                    _fp += np.sum(pred_th != gt)
+                    _tn += np.sum(pred_th == gt)
+                tp.append(_tp)
+                fp.append(_fp)
+                fn.append(_fn)
+                tn.append(_tn)
         return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
 
-def normalize(tensor):
+def normalize(tensor: torch.Tensor):
     norm = torch.norm(tensor, p=2, dim=-1, keepdim=True)
     return tensor / (norm + 1e-9), norm
+
+def proj(A: torch.Tensor, B: torch.Tensor, r: float):
+    with torch.no_grad():
+        d = (B - A).view(-1).norm(p=2).item()
+        scale = min(1.0, r / (d + 1e-9))
+        return A + (B - A) * scale

@@ -17,7 +17,8 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class Attack_Framework():
-    def __init__(self, dataset : PartialDataset, shadow_models : nn.ModuleList, args, idxs: OrderedDict, shadow_col: dict[list], unlearn_args):
+    def __init__(self, target_model, dataset : PartialDataset, shadow_models : nn.ModuleList, args, idxs: OrderedDict, shadow_col: dict[list], unlearn_args):
+        self.target_model = target_model
         self.dataset = dataset
         self.shadow_models = shadow_models
         self.include, self.exclude = [], []
@@ -30,7 +31,7 @@ class Attack_Framework():
 
         self.types = [""]
         self.summary = dict()
-        self.CE = nn.CrossEntropyLoss()
+        self.ce = nn.CrossEntropyLoss()
 
     def get_unlearned_model(self, i: int):
         unlearned_model = create_model(model_name=self.args.shadow_model, num_classes=self.args.num_classes)
@@ -62,7 +63,7 @@ class Attack_Framework():
 
             if not os.path.exists(os.path.join(save_path, f"{i}")):
                 os.makedirs(os.path.join(save_path, f"{i}"))
-            unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], self.CE, os.path.join(save_path, f"{i}"), self.unlearn_args)
+            unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], self.ce, os.path.join(save_path, f"{i}"), self.unlearn_args)
             unlearn_method.prepare_unlearn(unlearn_dataloaders)
             unlearned_model = unlearn_method.get_unlearned_model()
             torch.save(unlearned_model.state_dict(), weights_path)
@@ -80,27 +81,11 @@ class Attack_Framework():
             print("target idx:", target_idx, include, exclude)
         self.include, self.exclude = include, exclude
 
-    def get_labels(self, input): # For Debugging Purposes
-        include_labels = []
-        for i in self.include:
-            with torch.no_grad():
-                adv_output = self.shadow_models[i](input)
-            pred_label = adv_output.max(1)[1]
-            include_labels.append(pred_label.item())
-        exclude_labels = []
-        for i in self.exclude:
-            with torch.no_grad():
-                adv_output = self.shadow_models[i](input)
-            pred_label = adv_output.max(1)[1]
-            exclude_labels.append(pred_label.item())
-        return include_labels, exclude_labels
-
     def update_atk_summary(self, name, target_input, target_label, idx) -> dict:
         return {}
     def get_atk_summary(self):
         summary = self.summary.copy()
         self.summary = dict()
         return summary
-
     def get_results(self, target_model, **kwargs):
         return
