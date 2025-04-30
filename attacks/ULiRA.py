@@ -32,13 +32,13 @@ class ULiRA(Attack_Framework):
         for i in self.include:
             model = self.unlearned_shadow_models[i]
             with torch.no_grad():
-                output = model(target_input)
-            logit_in.append(output[0, target_label.item()].item())
+                target_output = model(target_input)
+            logit_in.append(logit(target_output, target_label))
         for i in self.exclude:
             model = self.shadow_models[i]
             with torch.no_grad():
-                output = model(target_input)
-            logit_ex.append(output[0, target_label.item()].item())
+                target_output = model(target_input)
+            logit_ex.append(logit(target_output, target_label))
         self.summary[name][idx] = {
             "target_input"      : target_input,
             "target_label"      : target_label,
@@ -57,7 +57,7 @@ class ULiRA(Attack_Framework):
                 for i in self.summary[name]:
                     with torch.no_grad():
                         target_output = self.target_model(self.summary[name][i]["target_input"])
-                    target_logit = target_output[0, self.summary[name][i]["target_label"]].item()
+                    target_logit = logit(target_output, self.summary[name][i]["target_label"])
                     if (len(self.summary[name][i]["logit_in"]) == 0) or (len(self.summary[name][i]["logit_ex"]) == 0):
                         p = 1
                     else:
@@ -74,6 +74,11 @@ class ULiRA(Attack_Framework):
             fn.append(_fn)
             tn.append(_tn)
         return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
+
+def logit(output, label):
+    with torch.no_grad():
+        w = F.softmax(output, dim=1)[0, label.item()].item()
+    return np.log(w / (1 - w))
 
 def pr(x, obs):
     mean, std = norm.fit(obs)
