@@ -55,6 +55,8 @@ def main():
         split=args.split,
         seed=args.seed
     )
+    validset = dataset.get_subset(dataset.valid_idx)
+    valid_loader = DataLoader(validset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
 
     # training
@@ -70,14 +72,18 @@ def main():
         model = create_model(model_name=args.model, num_classes=args.num_classes)
         model.to(DEVICE)
 
-        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+        # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+        if args.opt == "sgd":
+            optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+        elif args.opt == "adamw":
+            optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
         best_acc = None
         best_epoch = None
         for epoch in range(1, args.epochs + 1):
             train_metrics = train(epoch, shadow_loader, model, loss_function, optimizer)
-            eval_metrics = validate(shadow_loader, model, loss_function)
+            eval_metrics = validate(valid_loader, model, loss_function)
             scheduler.step()
 
             if best_acc is None or best_acc < eval_metrics["top1"]:

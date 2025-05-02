@@ -19,7 +19,7 @@ class Apollo(Attack_Framework):
         self.unlearned_shadow_models = nn.ModuleList()
         for i in range(self.args.num_shadow):
             self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
-        self.eps = 80 / 255
+        self.eps = 0.01
 
     def get_near_miss_label(self, target_input, target_label):
         min_loss_label = None
@@ -40,22 +40,15 @@ class Apollo(Attack_Framework):
                 min_loss, min_loss_label = sum_loss, label
         return torch.Tensor([min_loss_label]).to(torch.int64).to(DEVICE)
 
-    def loss(self, input, label_og, label_un, label_rt):
-        loss_og, loss_un, loss_rt = 0.0, 0.0, 0.0
-        for i in self.include:
-            output = self.shadow_models[i](input)
-            loss_og += self.ce(output, label_og)
-
+    def loss(self, input, label_un, label_rt):
+        loss_un, loss_rt = 0.0, 0.0
         for i in self.include:
             output = self.unlearned_shadow_models[i](input)
             loss_un += self.ce(output, label_un)
-        
         for i in self.exclude:
             output = self.unlearned_shadow_models[i](input)
             loss_rt += self.ce(output, label_rt)
-        
-        return  self.args.w[0] * loss_og / len(self.include) + \
-                self.args.w[1] * loss_un / len(self.include) + \
+        return  self.args.w[1] * loss_un / len(self.include) + \
                 self.args.w[2] * loss_rt / len(self.include)
 
     def Under_Un_Adv(self, target_input, target_label):
@@ -71,7 +64,7 @@ class Apollo(Attack_Framework):
         conf, pred = [], []
         for epoch in range(self.args.atk_epochs):
             optimizer.zero_grad()
-            loss = self.loss(adv_input, target_label, target_label, adv_label)
+            loss = self.loss(adv_input, target_label, adv_label)
             loss.backward()
             optimizer.step()
 
@@ -79,13 +72,32 @@ class Apollo(Attack_Framework):
                 projected = proj(target_input, adv_input.data, self.eps * (epoch + 1) / (self.args.atk_epochs))
                 adv_input.data.copy_(projected)
                 adv_input.data.clamp_(0.0, 1.0)
-            # adv_input = proj(target_input, adv_input, self.eps * (epoch + 1) / (self.args.atk_epochs))
-            # torch.clamp(adv_input, min=0, max=1) # Image data
 
             with torch.no_grad():
                 adv_output = self.target_model(adv_input)
             pred.append(adv_output.max(1)[1].item())
-            conf.append(F.softmax(adv_output, dim=1)[0, target_label].item()) # Confidence on target label
+
+            # conf.append(F.softmax(adv_output, dim=1)[0, target_label].item()) # Confidence on target label
+            # print("--------------", epoch, "--------------")
+            # print(target_input[0, 0, :2, :2])
+            # print(adv_input[0, 0, :2, :2])
+            # print((adv_input - target_input).view(-1).norm(p=2).item())
+            # for i in self.include:
+            #     with torch.no_grad():
+            #         output = self.shadow_models[i](adv_input)
+                # print("og", i, output.max(1)[1].item())
+            # for i in self.include:
+            #     with torch.no_grad():
+            #         output = self.unlearned_shadow_models[i](adv_input)
+                # print("un", i, output.max(1)[1].item())
+            sum = 0
+            for i in self.exclude:
+                with torch.no_grad():
+                    output = self.shadow_models[i](adv_input)
+                sum += F.softmax(output, dim=1)[0, target_label].item()
+            conf.append(sum / len(self.exclude))
+            #     print("rt", i, output.max(1)[1].item())
+            # print(">>>", sum / len(self.exclude))
         return conf, pred
 
     def Over_Un_Adv(self, target_input, target_label):
@@ -101,7 +113,7 @@ class Apollo(Attack_Framework):
         conf, pred = [], []
         for epoch in range(self.args.atk_epochs):
             optimizer.zero_grad()
-            loss = self.loss(adv_input, target_label, adv_label, target_label)
+            loss = self.loss(adv_input, adv_label, target_label)
             loss.backward()
             optimizer.step()
 
@@ -113,10 +125,44 @@ class Apollo(Attack_Framework):
             with torch.no_grad():
                 adv_output = self.target_model(adv_input)
             pred.append(adv_output.max(1)[1].item())
-            conf.append(F.softmax(adv_output, dim=1)[0, target_label].item()) # Confidence on target label
+            # conf.append(F.softmax(adv_output, dim=1)[0, target_label].item()) # Confidence on target label
+            # print("--------------", epoch, "--------------")
+            # print(target_input[0, 0, :2, :2])
+            # print(adv_input[0, 0, :2, :2])
+            # print((adv_input - target_input).view(-1).norm(p=2).item())
+            # for i in self.include:
+            #     with torch.no_grad():
+            #         output = self.shadow_models[i](adv_input)
+                # print("og", i, output.max(1)[1].item())
+            # for i in self.include:
+            #     with torch.no_grad():
+            #         output = self.unlearned_shadow_models[i](adv_input)
+                # print("un", i, output.max(1)[1].item())
+            sum = 0
+            for i in self.exclude:
+                with torch.no_grad():
+                    output = self.shadow_models[i](adv_input)
+                sum += F.softmax(output, dim=1)[0, target_label].item()
+            conf.append(sum / len(self.exclude))
+            #     print("rt", i, output.max(1)[1].item())
+            # print(">>>", sum / len(self.exclude))
         return conf, pred
 
     def update_atk_summary(self, name, target_input, target_label, idx):
+        # print((target_input - target_input).view(-1).norm(p=2).item())
+        # for i in self.include:
+        #     with torch.no_grad():
+        #         output = self.shadow_models[i](target_input)
+        #     print("og", i, output.max(1)[1].item())
+        # for i in self.include:
+        #     with torch.no_grad():
+        #         output = self.unlearned_shadow_models[i](target_input)
+        #     print("un", i, output.max(1)[1].item())
+        # for i in self.exclude:
+        #     with torch.no_grad():
+        #         output = self.shadow_models[i](target_input)
+        #     print("rt", i, output.max(1)[1].item())
+        # exit()
         if (not name in self.summary):
             self.summary[name] = dict()
         un_conf, un_pred = self.Under_Un_Adv(target_input, target_label)
@@ -136,62 +182,66 @@ class Apollo(Attack_Framework):
 
     def get_results_Under(self):
         tp, fp, fn, tn = [], [], [], []
-        ths = np.arange(0, 1, 1e-2)
+        gt, conf, pred = {}, {}, {}
+        ths = np.arange(0, 1, 1e-3)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:
-            gt      = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
-            conf    = np.array([self.summary[name][i]["un_conf"] for i in self.summary[name]])
-            pred    = np.array([self.summary[name][i]["un_pred"] for i in self.summary[name]])
+            gt[name]   = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
+            conf[name] = np.array([self.summary[name][i]["un_conf"] for i in self.summary[name]])
+            pred[name] = np.array([self.summary[name][i]["un_pred"] for i in self.summary[name]])
+        # print(gt["unlearn"][:5])
+        # print(conf["unlearn"][:5])
+        # print(pred["unlearn"][:5])
+        # exit()
 
-            for th in tqdm(ths):
-                _tp, _fp, _fn, _tn = 0, 0, 0, 0
-
-                idx = np.where((conf < th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
+        for th in tqdm(ths):
+            _tp, _fp, _fn, _tn = 0, 0, 0, 0
+            for name in ["unlearn", "valid"]:
+                idx = np.where((conf[name] > th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
                 idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
-                # conf_th = conf[np.arange(self.args.N), idx]
-                pred_th = pred[np.arange(self.args.N), idx]
+                pred_th = pred[name][np.arange(self.args.N), idx]
 
                 if (name == "unlearn"):
-                    _tp += np.sum(pred_th == gt)
-                    _fn += np.sum(pred_th != gt)
+                    _tp += np.sum(pred_th == gt[name])
+                    _fn += np.sum(pred_th != gt[name])
                 else:
-                    _fp += np.sum(pred_th == gt)
-                    _tn += np.sum(pred_th != gt)
-                tp.append(_tp)
-                fp.append(_fp)
-                fn.append(_fn)
-                tn.append(_tn)
+                    _fp += np.sum(pred_th == gt[name])
+                    _tn += np.sum(pred_th != gt[name])
+            tp.append(_tp)
+            fp.append(_fp)
+            fn.append(_fn)
+            tn.append(_tn)
         return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
 
     def get_results_Over(self):
         tp, fp, fn, tn = [], [], [], []
-        ths = np.arange(0, 1, 1e-2)
+        gt, conf, pred = {}, {}, {}
+        ths = np.arange(0, 1, 1e-3)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:
-            gt      = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
-            conf    = np.array([self.summary[name][i]["un_conf"] for i in self.summary[name]])
-            pred    = np.array([self.summary[name][i]["un_pred"] for i in self.summary[name]])
+            gt[name]   = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
+            conf[name] = np.array([self.summary[name][i]["ov_conf"] for i in self.summary[name]])
+            pred[name] = np.array([self.summary[name][i]["ov_pred"] for i in self.summary[name]])
 
-            for th in tqdm(ths):
-                _tp, _fp, _fn, _tn = 0, 0, 0, 0
-
-                idx = np.where((conf < th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
+        for th in tqdm(ths):
+            _tp, _fp, _fn, _tn = 0, 0, 0, 0
+            for name in ["unlearn", "valid"]:
+                idx = np.where((conf[name] > th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
                 idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
-                # conf_th = conf[np.arange(self.args.N), idx]
-                pred_th = pred[np.arange(self.args.N), idx]
+                pred_th = pred[name][np.arange(self.args.N), idx]
 
                 if (name == "unlearn"):
-                    _tp += np.sum(pred_th != gt)
-                    _fn += np.sum(pred_th == gt)
+                    _tp += np.sum(pred_th != gt[name])
+                    _fn += np.sum(pred_th == gt[name])
                 else:
-                    _fp += np.sum(pred_th != gt)
-                    _tn += np.sum(pred_th == gt)
-                tp.append(_tp)
-                fp.append(_fp)
-                fn.append(_fn)
-                tn.append(_tn)
+                    _fp += np.sum(pred_th != gt[name])
+                    _tn += np.sum(pred_th == gt[name])
+            tp.append(_tp)
+            fp.append(_fp)
+            fn.append(_fn)
+            tn.append(_tn)
         return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
 
 def normalize(tensor: torch.Tensor):
