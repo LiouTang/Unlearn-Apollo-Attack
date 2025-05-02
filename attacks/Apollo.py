@@ -19,7 +19,7 @@ class Apollo(Attack_Framework):
         self.unlearned_shadow_models = nn.ModuleList()
         for i in range(self.args.num_shadow):
             self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
-        self.eps = 0.01
+        self.eps = self.args.eps
 
     def get_near_miss_label(self, target_input, target_label):
         min_loss_label = None
@@ -77,27 +77,12 @@ class Apollo(Attack_Framework):
                 adv_output = self.target_model(adv_input)
             pred.append(adv_output.max(1)[1].item())
 
-            # conf.append(F.softmax(adv_output, dim=1)[0, target_label].item()) # Confidence on target label
-            # print("--------------", epoch, "--------------")
-            # print(target_input[0, 0, :2, :2])
-            # print(adv_input[0, 0, :2, :2])
-            # print((adv_input - target_input).view(-1).norm(p=2).item())
-            # for i in self.include:
-            #     with torch.no_grad():
-            #         output = self.shadow_models[i](adv_input)
-                # print("og", i, output.max(1)[1].item())
-            # for i in self.include:
-            #     with torch.no_grad():
-            #         output = self.unlearned_shadow_models[i](adv_input)
-                # print("un", i, output.max(1)[1].item())
             sum = 0
             for i in self.exclude:
                 with torch.no_grad():
                     output = self.shadow_models[i](adv_input)
                 sum += F.softmax(output, dim=1)[0, target_label].item()
             conf.append(sum / len(self.exclude))
-            #     print("rt", i, output.max(1)[1].item())
-            # print(">>>", sum / len(self.exclude))
         return conf, pred
 
     def Over_Un_Adv(self, target_input, target_label):
@@ -125,44 +110,16 @@ class Apollo(Attack_Framework):
             with torch.no_grad():
                 adv_output = self.target_model(adv_input)
             pred.append(adv_output.max(1)[1].item())
-            # conf.append(F.softmax(adv_output, dim=1)[0, target_label].item()) # Confidence on target label
-            # print("--------------", epoch, "--------------")
-            # print(target_input[0, 0, :2, :2])
-            # print(adv_input[0, 0, :2, :2])
-            # print((adv_input - target_input).view(-1).norm(p=2).item())
-            # for i in self.include:
-            #     with torch.no_grad():
-            #         output = self.shadow_models[i](adv_input)
-                # print("og", i, output.max(1)[1].item())
-            # for i in self.include:
-            #     with torch.no_grad():
-            #         output = self.unlearned_shadow_models[i](adv_input)
-                # print("un", i, output.max(1)[1].item())
+
             sum = 0
             for i in self.exclude:
                 with torch.no_grad():
                     output = self.shadow_models[i](adv_input)
                 sum += F.softmax(output, dim=1)[0, target_label].item()
             conf.append(sum / len(self.exclude))
-            #     print("rt", i, output.max(1)[1].item())
-            # print(">>>", sum / len(self.exclude))
         return conf, pred
 
     def update_atk_summary(self, name, target_input, target_label, idx):
-        # print((target_input - target_input).view(-1).norm(p=2).item())
-        # for i in self.include:
-        #     with torch.no_grad():
-        #         output = self.shadow_models[i](target_input)
-        #     print("og", i, output.max(1)[1].item())
-        # for i in self.include:
-        #     with torch.no_grad():
-        #         output = self.unlearned_shadow_models[i](target_input)
-        #     print("un", i, output.max(1)[1].item())
-        # for i in self.exclude:
-        #     with torch.no_grad():
-        #         output = self.shadow_models[i](target_input)
-        #     print("rt", i, output.max(1)[1].item())
-        # exit()
         if (not name in self.summary):
             self.summary[name] = dict()
         un_conf, un_pred = self.Under_Un_Adv(target_input, target_label)
@@ -190,10 +147,6 @@ class Apollo(Attack_Framework):
             gt[name]   = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
             conf[name] = np.array([self.summary[name][i]["un_conf"] for i in self.summary[name]])
             pred[name] = np.array([self.summary[name][i]["un_pred"] for i in self.summary[name]])
-        # print(gt["unlearn"][:5])
-        # print(conf["unlearn"][:5])
-        # print(pred["unlearn"][:5])
-        # exit()
 
         for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0

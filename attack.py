@@ -58,7 +58,7 @@ def main():
     parser.add_argument('--atk_lr',         type=float, default=1e-3,       help='Attack learning rate')
     parser.add_argument('--atk_epochs',     type=int,   default=30,         help='number of epochs for attack (default: 30)')
     parser.add_argument('--w',              type=float, default=None,       nargs=3, help='Adv. loss function weights')
-    # parser.add_argument('--eps',            type=float, default=1e-3,       help='epsilon for clipping')
+    parser.add_argument('--eps',            type=float, default=1,          help='epsilon for bound')
     parser.add_argument('--debug',                      action="store_true")
 
     parser.add_argument('--seed',           type=int,   default=42,         help='random seed (default: 42)')
@@ -141,7 +141,7 @@ def main():
         results = {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "ths": ths}
         with open(f"./Results/{args.atk}-{unlearn_args.unlearn}-{type}.pkl", "wb") as f:
             pkl.dump(results, f)
-        # plot_results(tp, fp, fn, tn, ths, f"{args.atk}-{unlearn_args.unlearn}-{type}")
+        plot_results(tp, fp, fn, tn, ths, f"{args.atk}-{unlearn_args.unlearn}-{type}")
 
 if __name__ == '__main__':
     main()
