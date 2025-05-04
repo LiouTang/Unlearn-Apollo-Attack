@@ -46,7 +46,7 @@ class Apollo(Attack_Framework):
             output = self.unlearned_shadow_models[i](input)
             loss_un += self.ce(output, label_un)
         for i in self.exclude:
-            output = self.unlearned_shadow_models[i](input)
+            output = self.shadow_models[i](input)
             loss_rt += self.ce(output, label_rt)
         return  self.args.w[1] * loss_un / len(self.include) + \
                 self.args.w[2] * loss_rt / len(self.include)
@@ -140,7 +140,7 @@ class Apollo(Attack_Framework):
     def get_results_Under(self):
         tp, fp, fn, tn = [], [], [], []
         gt, conf, pred = {}, {}, {}
-        ths = np.arange(0, 1, 1e-3)
+        ths = np.arange(0, 10, 1e-2)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:
@@ -151,7 +151,7 @@ class Apollo(Attack_Framework):
         for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "valid"]:
-                idx = np.where((conf[name] > th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
+                idx = np.where((conf[name] < th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
                 idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
                 pred_th = pred[name][np.arange(self.args.N), idx]
 
@@ -170,7 +170,7 @@ class Apollo(Attack_Framework):
     def get_results_Over(self):
         tp, fp, fn, tn = [], [], [], []
         gt, conf, pred = {}, {}, {}
-        ths = np.arange(0, 1, 1e-3)
+        ths = np.arange(0, 10, 1e-2)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:
@@ -181,7 +181,7 @@ class Apollo(Attack_Framework):
         for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "valid"]:
-                idx = np.where((conf[name] > th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
+                idx = np.where((conf[name] < th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
                 idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
                 pred_th = pred[name][np.arange(self.args.N), idx]
 
