@@ -24,10 +24,10 @@ class Apollo(Attack_Framework):
     
     def set_include_exclude(self, target_idx):
         super().set_include_exclude(target_idx)
-        self.func_un, self.params_list_un, self.buffers_list_un = batched_models_(
+        self.func_un, self.params_un, self.buffers_un = batched_models_(
             [self.unlearned_shadow_models[i] for i in self.include]
         )
-        self.func_rt, self.params_list_rt, self.buffers_list_rt = batched_models_(
+        self.func_rt, self.params_rt, self.buffers_rt = batched_models_(
             [self.shadow_models[i] for i in self.exclude]
         )
 
@@ -63,8 +63,8 @@ class Apollo(Attack_Framework):
                 self.args.w[2] * loss_rt / len(self.include)
 
     def batched_loss(self, input, label_un, label_rt):
-        loss_un = batched_loss_(input, label_un, self.func_un, self.params_list_un, self.buffers_list_un, len(self.include))
-        loss_rt = batched_loss_(input, label_rt, self.func_rt, self.params_list_rt, self.buffers_list_rt, len(self.exclude))
+        loss_un = batched_loss_(input, label_un, self.func_un, self.params_un, self.buffers_un)
+        loss_rt = batched_loss_(input, label_rt, self.func_rt, self.params_rt, self.buffers_rt)
         return  self.args.w[1] * loss_un / len(self.include) + \
                 self.args.w[2] * loss_rt / len(self.include)
 
@@ -216,16 +216,18 @@ class Apollo(Attack_Framework):
 
 
 def batched_models_(models_list):
-    # functionalize one model to capture the shared architecture
     func, _, _ = make_functional_with_buffers(models_list[0])
     params_list  = [tuple(m.parameters()) for m in models_list]
     buffers_list = [tuple(m.buffers())    for m in models_list]
-    return func, params_list, buffers_list
+
+    batched_params  = tuple(torch.stack(p, dim=0) for p in zip(*params_list))
+    batched_buffers = tuple(torch.stack(b, dim=0) for b in zip(*buffers_list))
+    return func, batched_params, batched_buffers
     
-def batched_loss_(input, label, func, params_list, buffers_list, N):
-    outputs = vmap(lambda p, b: func(p, b, input))(params_list, buffers_list)
+def batched_loss_(input, label, func, params, buffers):
+    outputs = vmap(lambda p, b, x: func(p, b, x), in_dims=(0, 0, None))(params, buffers, input)
     flat = outputs.reshape(-1, outputs.size(-1))
-    label_rep = label.repeat(N)
+    label_rep = label.repeat(outputs.size(0))
     return F.cross_entropy(flat, label_rep, reduction="mean")
 
 def normalize(tensor: torch.Tensor):
