@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from functorch import make_functional_with_buffers, vmap
+from torch.func import stack_module_state, functional_call
 
 from .attack_framework import Attack_Framework
 
@@ -19,15 +19,14 @@ class Apollo(Attack_Framework):
         self.types = ["Under", "Over"]
         self.unlearned_shadow_models = nn.ModuleList()
         for i in range(self.args.num_shadow):
-            self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
-        self.eps = self.args.eps
+            self.unlearned_shadow_models.append(self.get_unlearned_model(i))
     
     def set_include_exclude(self, target_idx):
         super().set_include_exclude(target_idx)
-        self.func_un, self.params_un, self.buffers_un = batched_models_(
+        self.temp_un, self.params_un, self.buffers_un = batched_models_(
             [self.unlearned_shadow_models[i] for i in self.include]
         )
-        self.func_rt, self.params_rt, self.buffers_rt = batched_models_(
+        self.temp_rt, self.params_rt, self.buffers_rt = batched_models_(
             [self.shadow_models[i] for i in self.exclude]
         )
 
@@ -63,10 +62,10 @@ class Apollo(Attack_Framework):
                 self.args.w[2] * loss_rt / len(self.include)
 
     def batched_loss(self, input, label_un, label_rt):
-        loss_un = batched_loss_(input, label_un, self.func_un, self.params_un, self.buffers_un)
-        loss_rt = batched_loss_(input, label_rt, self.func_rt, self.params_rt, self.buffers_rt)
-        return  self.args.w[1] * loss_un / len(self.include) + \
-                self.args.w[2] * loss_rt / len(self.include)
+        loss_un = batched_loss_(input, label_un, self.temp_un, self.params_un, self.buffers_un)
+        loss_rt = batched_loss_(input, label_rt, self.temp_rt, self.params_rt, self.buffers_rt)
+        return  self.args.w[1] * loss_un + \
+                self.args.w[2] * loss_rt
 
     def Under_Un_Adv(self, target_input, target_label):
         # Under-Unlearning: Given target (x, y), adv. input x',
@@ -86,7 +85,7 @@ class Apollo(Attack_Framework):
             optimizer.step()
 
             with torch.no_grad():
-                projected = proj(target_input, adv_input.data, self.eps * (epoch + 1) / (self.args.atk_epochs))
+                projected = proj(target_input, adv_input.data, self.args.eps * (epoch + 1) / (self.args.atk_epochs))
                 adv_input.data.copy_(projected)
                 adv_input.data.clamp_(0.0, 1.0)
 
@@ -120,7 +119,7 @@ class Apollo(Attack_Framework):
             optimizer.step()
 
             with torch.no_grad():
-                projected = proj(target_input, adv_input.data, self.eps * (epoch + 1) / (self.args.atk_epochs))
+                projected = proj(target_input, adv_input.data, self.args.eps * (epoch + 1) / (self.args.atk_epochs))
                 adv_input.data.copy_(projected)
                 adv_input.data.clamp_(0.0, 1.0)
 
@@ -216,16 +215,17 @@ class Apollo(Attack_Framework):
 
 
 def batched_models_(models_list):
-    func, _, _ = make_functional_with_buffers(models_list[0])
-    params_list  = [tuple(m.parameters()) for m in models_list]
-    buffers_list = [tuple(m.buffers())    for m in models_list]
+    temp = models_list[0]
+    params, buffers = stack_module_state(models_list)
+    return temp, params, buffers
 
-    batched_params  = tuple(torch.stack(p, dim=0) for p in zip(*params_list))
-    batched_buffers = tuple(torch.stack(b, dim=0) for b in zip(*buffers_list))
-    return func, batched_params, batched_buffers
-    
-def batched_loss_(input, label, func, params, buffers):
-    outputs = vmap(lambda p, b, x: func(p, b, x), in_dims=(0, 0, None))(params, buffers, input)
+def batched_loss_(x, label, temp, params, buffers):
+    # outputs: (N, batch, classes)
+    outputs = torch.vmap(
+        lambda ps, bs, xx: functional_call(temp, ps, (xx,), {}, tie_weights=True, strict=False),
+        in_dims=(0, 0, None)
+    )(params, buffers, x)
+
     flat = outputs.reshape(-1, outputs.size(-1))
     label_rep = label.repeat(outputs.size(0))
     return F.cross_entropy(flat, label_rep, reduction="mean")
