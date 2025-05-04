@@ -31,7 +31,6 @@ class Attack_Framework():
 
         self.types = [""]
         self.summary = dict()
-        self.ce = nn.CrossEntropyLoss()
 
     def get_unlearned_model(self, i: int):
         unlearned_model = create_model(model_name=self.args.shadow_model, num_classes=self.args.num_classes)
@@ -63,7 +62,8 @@ class Attack_Framework():
 
             if not os.path.exists(os.path.join(save_path, f"{i}")):
                 os.makedirs(os.path.join(save_path, f"{i}"))
-            unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], self.ce, os.path.join(save_path, f"{i}"), self.unlearn_args)
+            ce = nn.CrossEntropyLoss()
+            unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], ce, os.path.join(save_path, f"{i}"), self.unlearn_args)
             unlearn_method.prepare_unlearn(unlearn_dataloaders)
             unlearned_model = unlearn_method.get_unlearned_model()
             torch.save(unlearned_model.state_dict(), weights_path)

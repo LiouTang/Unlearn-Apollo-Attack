@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from functorch import make_functional_with_buffers, vmap
 
 from .attack_framework import Attack_Framework
 
@@ -20,6 +21,16 @@ class Apollo(Attack_Framework):
         for i in range(self.args.num_shadow):
             self.unlearned_shadow_models.append( self.get_unlearned_model(i) )
         self.eps = self.args.eps
+    
+    def set_include_exclude(self, target_idx):
+        super().set_include_exclude(target_idx)
+        self.func_un, self.params_list_un, self.buffers_list_un = batched_models_(
+            [self.unlearned_shadow_models[i] for i in self.include]
+        )
+        self.func_rt, self.params_list_rt, self.buffers_list_rt = batched_models_(
+            [self.shadow_models[i] for i in self.exclude]
+        )
+
 
     def get_near_miss_label(self, target_input, target_label):
         min_loss_label = None
@@ -31,7 +42,7 @@ class Apollo(Attack_Framework):
             sum_loss = 0
             for i in self.exclude:
                 adv_output = self.shadow_models[i](target_input)
-                loss = self.ce(adv_output, torch.Tensor([label]).to(torch.int64).to(DEVICE))
+                loss = F.cross_entropy(adv_output, torch.Tensor([label]).to(torch.int64).to(DEVICE))
                 sum_loss += loss.item()
 
             if (min_loss == None):
@@ -44,10 +55,16 @@ class Apollo(Attack_Framework):
         loss_un, loss_rt = 0.0, 0.0
         for i in self.include:
             output = self.unlearned_shadow_models[i](input)
-            loss_un += self.ce(output, label_un)
+            loss_un += F.cross_entropy(output, label_un)
         for i in self.exclude:
             output = self.shadow_models[i](input)
-            loss_rt += self.ce(output, label_rt)
+            loss_rt += F.cross_entropy(output, label_rt)
+        return  self.args.w[1] * loss_un / len(self.include) + \
+                self.args.w[2] * loss_rt / len(self.include)
+
+    def batched_loss(self, input, label_un, label_rt):
+        loss_un = batched_loss_(input, label_un, self.func_un, self.params_list_un, self.buffers_list_un, len(self.include))
+        loss_rt = batched_loss_(input, label_rt, self.func_rt, self.params_list_rt, self.buffers_list_rt, len(self.exclude))
         return  self.args.w[1] * loss_un / len(self.include) + \
                 self.args.w[2] * loss_rt / len(self.include)
 
@@ -64,7 +81,7 @@ class Apollo(Attack_Framework):
         conf, pred = [], []
         for epoch in range(self.args.atk_epochs):
             optimizer.zero_grad()
-            loss = self.loss(adv_input, target_label, adv_label)
+            loss = self.batched_loss(adv_input, target_label, adv_label)
             loss.backward()
             optimizer.step()
 
@@ -98,7 +115,7 @@ class Apollo(Attack_Framework):
         conf, pred = [], []
         for epoch in range(self.args.atk_epochs):
             optimizer.zero_grad()
-            loss = self.loss(adv_input, adv_label, target_label)
+            loss = self.batched_loss(adv_input, adv_label, target_label)
             loss.backward()
             optimizer.step()
 
@@ -196,6 +213,20 @@ class Apollo(Attack_Framework):
             fn.append(_fn)
             tn.append(_tn)
         return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
+
+
+def batched_models_(models_list):
+    # functionalize one model to capture the shared architecture
+    func, _, _ = make_functional_with_buffers(models_list[0])
+    params_list  = [tuple(m.parameters()) for m in models_list]
+    buffers_list = [tuple(m.buffers())    for m in models_list]
+    return func, params_list, buffers_list
+    
+def batched_loss_(input, label, func, params_list, buffers_list, N):
+    outputs = vmap(lambda p, b: func(p, b, input))(params_list, buffers_list)
+    flat = outputs.reshape(-1, outputs.size(-1))
+    label_rep = label.repeat(N)
+    return F.cross_entropy(flat, label_rep, reduction="mean")
 
 def normalize(tensor: torch.Tensor):
     norm = torch.norm(tensor, p=2, dim=-1, keepdim=True)
