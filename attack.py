@@ -109,7 +109,7 @@ def main():
 
     with open(os.path.join(args.shadow_path, "data_split.pkl"), "rb") as f:
         data_split = pkl.load(f)
-    print(data_split.items())
+    # print(data_split.items())
     print("Models Loaded")
 
     # Attack!
@@ -132,9 +132,15 @@ def main():
             Atk.update_atk_summary(name, target_input, target_label, idxs[name][i])
             if (args.debug):
                 return
+    
+    # Save Summary
+    if (not os.path.exists("./Summary")):
+        os.makedirs("./Summary")
+    with open(f"./Summary/{args.atk}-{unlearn_args.unlearn}.pkl", "wb") as f:
+        pkl.dump(Atk.get_atk_summary(), f)
 
     # Interpret results
-    if (not os.path.exists("./Results/")):
+    if (not os.path.exists("./Results")):
         os.makedirs("./Results")
     for type in Atk.types:
         tp, fp, fn, tn, ths = Atk.get_results(type=type)

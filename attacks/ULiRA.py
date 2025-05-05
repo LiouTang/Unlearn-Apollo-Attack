@@ -50,7 +50,7 @@ class ULiRA(Attack_Framework):
     def get_results(self, **kwargs):
         tp, fp, fn, tn = [], [], [], []
         p = {}
-        ths = np.arange(-2, 2, 1e-2)
+        ths = np.arange(-5, 5, 1e-2)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:

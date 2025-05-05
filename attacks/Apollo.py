@@ -59,7 +59,7 @@ class Apollo(Attack_Framework):
             output = self.shadow_models[i](input)
             loss_rt += F.cross_entropy(output, label_rt)
         return  self.args.w[1] * loss_un / len(self.include) + \
-                self.args.w[2] * loss_rt / len(self.include)
+                self.args.w[2] * loss_rt / len(self.exclude)
 
     def batched_loss(self, input, label_un, label_rt):
         loss_un = batched_loss_(input, label_un, self.temp_un, self.params_un, self.buffers_un)
@@ -108,7 +108,7 @@ class Apollo(Attack_Framework):
         # retrained model (x not in unlearned set) x' --> y
         adv_input = target_input.detach().clone().to(DEVICE)
         adv_input.requires_grad = True
-        adv_label = target_label.to(torch.int64).to(DEVICE)
+        adv_label = self.get_near_miss_label(target_input, target_label)
         optimizer = torch.optim.SGD([adv_input], lr=self.args.atk_lr)
 
         conf, pred = [], []
@@ -228,7 +228,7 @@ def batched_loss_(x, label, temp, params, buffers):
 
     flat = outputs.reshape(-1, outputs.size(-1))
     label_rep = label.repeat(outputs.size(0))
-    return F.cross_entropy(flat, label_rep, reduction="mean")
+    return F.cross_entropy(flat, label_rep)
 
 def normalize(tensor: torch.Tensor):
     norm = torch.norm(tensor, p=2, dim=-1, keepdim=True)
