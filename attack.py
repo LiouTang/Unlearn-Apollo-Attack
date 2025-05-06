@@ -17,9 +17,9 @@ from dataset import create_dataset
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def plot_results(tp, fp, fn, tn, ths, title):
-    if not os.path.exists("./Figs/"):
-        os.makedirs("./Figs/")
+def plot_results(tp, fp, fn, tn, ths, title, path):
+    if not os.path.exists(path):
+        os.makedirs(path)
     sort = np.argsort(fp)
     tp, fp, fn, tn = tp[sort], fp[sort], fn[sort], tn[sort]
     # print(tp, fp, fn, tn)
@@ -35,7 +35,7 @@ def plot_results(tp, fp, fn, tn, ths, title):
     plt.grid(True)
     # plt.legend()
     plt.title(title)
-    plt.savefig("./Figs/" + title + ".pdf")
+    plt.savefig(os.path.join(path, title + ".pdf"))
     return
 
 def main():
@@ -47,18 +47,21 @@ def main():
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
     parser.add_argument('--input_size',     type=int,   default=None,       nargs=3, help='Input all image dimensions (d h w, e.g. --input_size 3 224 224)')
     # parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
-    parser.add_argument('--target_path',    type=str,   default='',         help='Initialize model from this path (default: none)')
+    parser.add_argument('--target_path',    type=str,   default='',         help='Initialize target (unlearned) model from this path (default: none)')
+    parser.add_argument('--origin_path',    type=str,   default='',         help='Initialize original (learned) model from this path (default: none)')
 
     parser.add_argument('--num_shadow',     type=int,   default=16,         help='number of shadow models (default: 16)')
     parser.add_argument('--shadow_model',   type=str,   default='ResNet18', help='shadow model architechture (default: "ResNet18"')
     parser.add_argument('--shadow_path',    type=str,   default='',         help='Initialize shadow models from this path (default: none)')
 
     parser.add_argument('--N',              type=int,   default=200,        help='number of samples to attack')
-    parser.add_argument('--atk',            type=str,   default="Apollo",   help='Attack Name')
-    parser.add_argument('--atk_lr',         type=float, default=1e-3,       help='Attack learning rate')
+    parser.add_argument('--atk',            type=str,   default='Apollo',   help='Attack Name')
+    parser.add_argument('--atk_lr',         type=float, default=1e-1,       help='Attack learning rate')
     parser.add_argument('--atk_epochs',     type=int,   default=30,         help='number of epochs for attack (default: 30)')
     parser.add_argument('--w',              type=float, default=None,       nargs=3, help='Adv. loss function weights')
-    parser.add_argument('--eps',            type=float, default=1,          help='epsilon for bound')
+    parser.add_argument('--eps',            type=float, default=10,         help='epsilon for bound')
+
+    parser.add_argument('--save_to',        type=str,   default='./results',   help='save results to this path')
     parser.add_argument('--debug',                      action="store_true")
 
     parser.add_argument('--seed',           type=int,   default=42,         help='random seed (default: 42)')
@@ -114,9 +117,9 @@ def main():
 
     # Attack!
     Atk = attacks.get_attack(
+        name=args.atk,
         target_model=target_model,
         dataset=dataset,
-        name=args.atk,
         shadow_models=shadow_models,
         args=args,
         idxs=idxs,
@@ -134,20 +137,28 @@ def main():
                 return
     
     # Save Summary
-    if (not os.path.exists("./Summary")):
-        os.makedirs("./Summary")
-    with open(f"./Summary/{args.atk}-{unlearn_args.unlearn}.pkl", "wb") as f:
+    summary_path = os.path.join(args.save_to, "summary")
+    if (not os.path.exists(summary_path)):
+        os.makedirs(summary_path)
+    with open(os.path.join(summary_path, f"{args.atk}-{unlearn_args.unlearn}.pkl"), "wb") as f:
         pkl.dump(Atk.get_atk_summary(), f)
 
     # Interpret results
-    if (not os.path.exists("./Results")):
-        os.makedirs("./Results")
+    roc_path = os.path.join(args.save_to, "roc")
+    if (not os.path.exists(roc_path)):
+        os.makedirs(roc_path)
     for type in Atk.types:
-        tp, fp, fn, tn, ths = Atk.get_results(type=type)
-        results = {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "ths": ths}
-        with open(f"./Results/{args.atk}-{unlearn_args.unlearn}-{type}.pkl", "wb") as f:
-            pkl.dump(results, f)
-        plot_results(tp, fp, fn, tn, ths, f"{args.atk}-{unlearn_args.unlearn}-{type}")
+        tp, fp, fn, tn, ths = Atk.get_roc(type=type)
+
+        roc = {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "ths": ths}
+        with open(os.path.join(roc_path, f"{args.atk}-{unlearn_args.unlearn}-{type}.pkl"), "wb") as f:
+            pkl.dump(roc, f)
+
+        plot_results(
+            tp, fp, fn, tn, ths,
+            f"{args.atk}-{unlearn_args.unlearn}-{type}",
+            os.path.join(args.save_to, "figs")
+        )
 
 if __name__ == '__main__':
     main()

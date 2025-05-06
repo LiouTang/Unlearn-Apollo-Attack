@@ -31,40 +31,10 @@ class Apollo(Attack_Framework):
         )
 
 
-    def get_near_miss_label(self, target_input, target_label):
-        min_loss_label = None
-        min_loss = None
-        for label in range(self.args.num_classes):
-            if (label == target_label.item()):
-                continue
-
-            sum_loss = 0
-            for i in self.exclude:
-                adv_output = self.shadow_models[i](target_input)
-                loss = F.cross_entropy(adv_output, torch.Tensor([label]).to(torch.int64).to(DEVICE))
-                sum_loss += loss.item()
-
-            if (min_loss == None):
-                min_loss, min_loss_label = sum_loss, label
-            elif (sum_loss < min_loss):
-                min_loss, min_loss_label = sum_loss, label
-        return torch.Tensor([min_loss_label]).to(torch.int64).to(DEVICE)
-
-    def loss(self, input, label_un, label_rt):
-        loss_un, loss_rt = 0.0, 0.0
-        for i in self.include:
-            output = self.unlearned_shadow_models[i](input)
-            loss_un += F.cross_entropy(output, label_un)
-        for i in self.exclude:
-            output = self.shadow_models[i](input)
-            loss_rt += F.cross_entropy(output, label_rt)
-        return  self.args.w[1] * loss_un / len(self.include) + \
-                self.args.w[2] * loss_rt / len(self.exclude)
-
     def batched_loss(self, input, label_un, label_rt):
         loss_un = batched_loss_(input, label_un, self.temp_un, self.params_un, self.buffers_un)
         loss_rt = batched_loss_(input, label_rt, self.temp_rt, self.params_rt, self.buffers_rt)
-        return  self.args.w[1] * loss_un + \
+        return  self.args.w[1] * loss_un - \
                 self.args.w[2] * loss_rt
 
     def Under_Un_Adv(self, target_input, target_label):
@@ -74,13 +44,13 @@ class Apollo(Attack_Framework):
         # retrained model (x not in unlearned set) x' --> y'
         adv_input = target_input.detach().clone().to(DEVICE)
         adv_input.requires_grad = True
-        adv_label = self.get_near_miss_label(target_input, target_label)
+        # adv_label = self.get_near_miss_label(target_input, target_label)
         optimizer = torch.optim.SGD([adv_input], lr=self.args.atk_lr)
 
         conf, pred = [], []
         for epoch in range(self.args.atk_epochs):
             optimizer.zero_grad()
-            loss = self.batched_loss(adv_input, target_label, adv_label)
+            loss = self.batched_loss(adv_input, target_label, target_label)
             loss.backward()
             optimizer.step()
 
@@ -94,10 +64,10 @@ class Apollo(Attack_Framework):
             pred.append(adv_output.max(1)[1].item())
 
             sum = 0
-            for i in self.exclude:
-                with torch.no_grad():
+            with torch.no_grad():
+                for i in self.exclude:
                     output = self.shadow_models[i](adv_input)
-                sum += F.softmax(output, dim=1)[0, target_label].item()
+                    sum += F.softmax(output, dim=1)[0, target_label].item()
             conf.append(sum / len(self.exclude))
         return conf, pred
 
@@ -108,13 +78,13 @@ class Apollo(Attack_Framework):
         # retrained model (x not in unlearned set) x' --> y
         adv_input = target_input.detach().clone().to(DEVICE)
         adv_input.requires_grad = True
-        adv_label = self.get_near_miss_label(target_input, target_label)
+        # adv_label = self.get_near_miss_label(target_input, target_label)
         optimizer = torch.optim.SGD([adv_input], lr=self.args.atk_lr)
 
         conf, pred = [], []
         for epoch in range(self.args.atk_epochs):
             optimizer.zero_grad()
-            loss = self.batched_loss(adv_input, adv_label, target_label)
+            loss = -self.batched_loss(adv_input, target_label, target_label)
             loss.backward()
             optimizer.step()
 
@@ -128,10 +98,10 @@ class Apollo(Attack_Framework):
             pred.append(adv_output.max(1)[1].item())
 
             sum = 0
-            for i in self.exclude:
-                with torch.no_grad():
+            with torch.no_grad():
+                for i in self.exclude:
                     output = self.shadow_models[i](adv_input)
-                sum += F.softmax(output, dim=1)[0, target_label].item()
+                    sum += F.softmax(output, dim=1)[0, target_label].item()
             conf.append(sum / len(self.exclude))
         return conf, pred
 
@@ -150,13 +120,13 @@ class Apollo(Attack_Framework):
         }
         return None
 
-    def get_results(self, **kwargs):
-        return eval(f"self.get_results_{kwargs['type']}")()
+    def get_roc(self, **kwargs):
+        return eval(f"self.get_roc_{kwargs['type']}")()
 
-    def get_results_Under(self):
+    def get_roc_Under(self):
         tp, fp, fn, tn = [], [], [], []
         gt, conf, pred = {}, {}, {}
-        ths = np.arange(0, 10, 1e-2)
+        ths = np.arange(0, 1, 1e-2)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:
@@ -183,10 +153,10 @@ class Apollo(Attack_Framework):
             tn.append(_tn)
         return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
 
-    def get_results_Over(self):
+    def get_roc_Over(self):
         tp, fp, fn, tn = [], [], [], []
         gt, conf, pred = {}, {}, {}
-        ths = np.arange(0, 10, 1e-2)
+        ths = np.arange(0, 1, 1e-2)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:

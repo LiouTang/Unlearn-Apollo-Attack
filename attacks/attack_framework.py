@@ -86,5 +86,5 @@ class Attack_Framework():
     def get_atk_summary(self):
         summary = self.summary.copy()
         return summary
-    def get_results(self, target_model, **kwargs):
+    def get_roc(self, target_model, **kwargs):
         return

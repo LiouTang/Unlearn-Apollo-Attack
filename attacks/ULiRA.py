@@ -47,7 +47,7 @@ class ULiRA(Attack_Framework):
         }
         return None
     
-    def get_results(self, **kwargs):
+    def get_roc(self, **kwargs):
         tp, fp, fn, tn = [], [], [], []
         p = {}
         ths = np.arange(-5, 5, 1e-2)
