@@ -1,5 +1,5 @@
 from .attack_framework import Attack_Framework
-from .Apollo import Apollo
+from .Apollo import Apollo, Apollo_Offline
 from .ULiRA import ULiRA
 
 def get_attack(name, **kwargs) -> Attack_Framework:

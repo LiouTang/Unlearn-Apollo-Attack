@@ -20,7 +20,7 @@ class Apollo(Attack_Framework):
         self.unlearned_shadow_models = nn.ModuleList()
         for i in range(self.args.num_shadow):
             self.unlearned_shadow_models.append(self.get_unlearned_model(i))
-    
+
     def set_include_exclude(self, target_idx):
         super().set_include_exclude(target_idx)
         self.temp_un, self.params_un, self.buffers_un = batched_models_(
@@ -31,13 +31,16 @@ class Apollo(Attack_Framework):
         )
 
 
-    def batched_loss(self, input, label_un, label_rt):
-        loss_un = batched_loss_(input, label_un, self.temp_un, self.params_un, self.buffers_un)
-        loss_rt = batched_loss_(input, label_rt, self.temp_rt, self.params_rt, self.buffers_rt)
-        return  self.args.w[1] * loss_un - \
-                self.args.w[2] * loss_rt
+    def batched_loss(self, input, label):
+        loss_un = batched_loss_(input, label, self.temp_un, self.params_un, self.buffers_un)
+        loss_rt = batched_loss_(input, label, self.temp_rt, self.params_rt, self.buffers_rt)
+        return  self.args.w[0] * loss_un - self.args.w[1] * loss_rt
+    def batched_loss_Under(self, input, label):
+        return  self.batched_loss(input, label)
+    def batched_loss_Over(self, input, label):
+        return  -self.batched_loss(input, label)
 
-    def Under_Un_Adv(self, target_input, target_label):
+    def Un_Adv(self, target_input, target_label, loss_func):
         # Under-Unlearning: Given target (x, y), adv. input x',
         # original model (x in train set) x' --> y
         # unlearned model (x in unlearned set) x' --> y
@@ -50,41 +53,7 @@ class Apollo(Attack_Framework):
         conf, pred = [], []
         for epoch in range(self.args.atk_epochs):
             optimizer.zero_grad()
-            loss = self.batched_loss(adv_input, target_label, target_label)
-            loss.backward()
-            optimizer.step()
-
-            with torch.no_grad():
-                projected = proj(target_input, adv_input.data, self.args.eps * (epoch + 1) / (self.args.atk_epochs))
-                adv_input.data.copy_(projected)
-                adv_input.data.clamp_(0.0, 1.0)
-
-            with torch.no_grad():
-                adv_output = self.target_model(adv_input)
-            pred.append(adv_output.max(1)[1].item())
-
-            sum = 0
-            with torch.no_grad():
-                for i in self.exclude:
-                    output = self.shadow_models[i](adv_input)
-                    sum += F.softmax(output, dim=1)[0, target_label].item()
-            conf.append(sum / len(self.exclude))
-        return conf, pred
-
-    def Over_Un_Adv(self, target_input, target_label):
-        # Over-Unlearning: Given target (x, y), adv. input x',
-        # original model (x in train set) x' --> y
-        # unlearned model (x in unlearned set) x' --> y'
-        # retrained model (x not in unlearned set) x' --> y
-        adv_input = target_input.detach().clone().to(DEVICE)
-        adv_input.requires_grad = True
-        # adv_label = self.get_near_miss_label(target_input, target_label)
-        optimizer = torch.optim.SGD([adv_input], lr=self.args.atk_lr)
-
-        conf, pred = [], []
-        for epoch in range(self.args.atk_epochs):
-            optimizer.zero_grad()
-            loss = -self.batched_loss(adv_input, target_label, target_label)
+            loss = loss_func(adv_input, target_label)
             loss.backward()
             optimizer.step()
 
@@ -108,8 +77,8 @@ class Apollo(Attack_Framework):
     def update_atk_summary(self, name, target_input, target_label, idx):
         if (not name in self.summary):
             self.summary[name] = dict()
-        un_conf, un_pred = self.Under_Un_Adv(target_input, target_label)
-        ov_conf, ov_pred = self.Over_Un_Adv(target_input, target_label)
+        un_conf, un_pred = self.Un_Adv(target_input, target_label, self.batched_loss_Under)
+        ov_conf, ov_pred = self.Un_Adv(target_input, target_label, self.batched_loss_Over)
         self.summary[name][idx] = {
             "target_input"  : target_input,
             "target_label"  : target_label,
@@ -121,67 +90,75 @@ class Apollo(Attack_Framework):
         return None
 
     def get_roc(self, **kwargs):
-        return eval(f"self.get_roc_{kwargs['type']}")()
+        prefix      = "un" if kwargs["type"] == "Under" else "ov"
+        compare     = (lambda c, th: c < th) if kwargs["type"] == "Under" else (lambda c, th: c > th)
+        is_positive = (lambda p, g: p == g)  if kwargs["type"] == "Under" else (lambda p, g: p != g)
 
-    def get_roc_Under(self):
         tp, fp, fn, tn = [], [], [], []
         gt, conf, pred = {}, {}, {}
         ths = np.arange(0, 1, 1e-2)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:
-            gt[name]   = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
-            conf[name] = np.array([self.summary[name][i]["un_conf"] for i in self.summary[name]])
-            pred[name] = np.array([self.summary[name][i]["un_pred"] for i in self.summary[name]])
+            gt[name] = (torch.cat([ self.summary[name][i]["target_label"] for i in self.summary[name] ], dim=0).cpu().numpy())
+            conf[name] = np.array([self.summary[name][i][f"{prefix}_conf"] for i in self.summary[name]])
+            pred[name] = np.array([self.summary[name][i][f"{prefix}_pred"] for i in self.summary[name]])
 
         for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "valid"]:
-                idx = np.where((conf[name] < th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
+                idx = np.where(compare(conf[name], th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
                 idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
                 pred_th = pred[name][np.arange(self.args.N), idx]
+                pos = is_positive(pred_th, gt[name])
 
                 if (name == "unlearn"):
-                    _tp += np.sum(pred_th == gt[name])
-                    _fn += np.sum(pred_th != gt[name])
+                    _tp += np.sum(pos)
+                    _fn += np.sum(~pos)
                 else:
-                    _fp += np.sum(pred_th == gt[name])
-                    _tn += np.sum(pred_th != gt[name])
+                    _fp += np.sum(pos)
+                    _tn += np.sum(~pos)
             tp.append(_tp)
             fp.append(_fp)
             fn.append(_fn)
             tn.append(_tn)
         return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
 
-    def get_roc_Over(self):
-        tp, fp, fn, tn = [], [], [], []
-        gt, conf, pred = {}, {}, {}
-        ths = np.arange(0, 1, 1e-2)
+class Apollo_Offline(Apollo):
+    def __init__(self, target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
+        Attack_Framework.__init__(self, target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
+        self.types = ["Under", "Over"]
 
-        print("Calculating Results!")
-        for name in ["unlearn", "valid"]:
-            gt[name]   = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
-            conf[name] = np.array([self.summary[name][i]["ov_conf"] for i in self.summary[name]])
-            pred[name] = np.array([self.summary[name][i]["ov_pred"] for i in self.summary[name]])
+    def set_include_exclude(self, target_idx):
+        Attack_Framework.set_include_exclude(self, target_idx)
+        self.temp, self.params, self.buffers = batched_models_(self.shadow_models)
 
-        for th in tqdm(ths):
-            _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "valid"]:
-                idx = np.where((conf[name] < th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
-                idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
-                pred_th = pred[name][np.arange(self.args.N), idx]
+    def batched_loss_Under(self, input, label):
+        outputs = torch.vmap(
+            lambda ps, bs, xx: functional_call(self.temp, ps, (xx,), {}, tie_weights=True, strict=False),
+            in_dims=(0, 0, None)
+        )(self.params, self.buffers, input)
 
-                if (name == "unlearn"):
-                    _tp += np.sum(pred_th != gt[name])
-                    _fn += np.sum(pred_th == gt[name])
-                else:
-                    _fp += np.sum(pred_th != gt[name])
-                    _tn += np.sum(pred_th == gt[name])
-            tp.append(_tp)
-            fp.append(_fp)
-            fn.append(_fn)
-            tn.append(_tn)
-        return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
+        flat = outputs.reshape(-1, outputs.size(-1))
+        label_rep = label.repeat(outputs.size(0))
+
+        loss_rt = F.cross_entropy(flat, label_rep)
+        top2_vals, _ = outputs.topk(2, dim=-1)
+        loss_db = top2_vals[0, :, 0] - top2_vals[0, :, 1]
+        return -self.args.w[0] * loss_rt + self.args.w[1] * loss_db
+    def batched_loss_Over(self, input, label):
+        outputs = torch.vmap(
+            lambda ps, bs, xx: functional_call(self.temp, ps, (xx,), {}, tie_weights=True, strict=False),
+            in_dims=(0, 0, None)
+        )(self.params, self.buffers, input)
+
+        flat = outputs.reshape(-1, outputs.size(-1))
+        label_rep = label.repeat(outputs.size(0))
+
+        loss_rt = F.cross_entropy(flat, label_rep)
+        top2_vals, _ = outputs.topk(2, dim=-1)
+        loss_db = top2_vals[0, :, 0] - top2_vals[0, :, 1]
+        return self.args.w[0] * loss_rt + self.args.w[1] * loss_db
 
 
 def batched_models_(models_list):
@@ -189,12 +166,12 @@ def batched_models_(models_list):
     params, buffers = stack_module_state(models_list)
     return temp, params, buffers
 
-def batched_loss_(x, label, temp, params, buffers):
+def batched_loss_(input, label, temp, params, buffers):
     # outputs: (N, batch, classes)
     outputs = torch.vmap(
         lambda ps, bs, xx: functional_call(temp, ps, (xx,), {}, tie_weights=True, strict=False),
         in_dims=(0, 0, None)
-    )(params, buffers, x)
+    )(params, buffers, input)
 
     flat = outputs.reshape(-1, outputs.size(-1))
     label_rep = label.repeat(outputs.size(0))
