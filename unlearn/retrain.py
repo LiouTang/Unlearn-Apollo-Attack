@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+import copy
 
 import torch 
 import torch.nn as nn
@@ -88,7 +88,7 @@ class Retrain(UnlearnMethod):
             if best_acc is None or best_acc < retain_valid_metrics["top1"]:  
                 # print("saving weights file to {}".format(weights_path))
                 # torch.save(self.model.state_dict(), weights_path)
-                best_model = self.model.copy()
+                best_model = copy.deepcopy(self.model)
                 best_acc = retain_valid_metrics["top1"]
                 best_epoch = epoch
         print('*** Best metric: {0} (epoch {1})'.format(best_acc, best_epoch))
