@@ -1,4 +1,5 @@
 import os
+import shutil
 import numpy as np
 
 import torch
@@ -38,15 +39,15 @@ class Attack_Framework():
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         weights_path = os.path.join(save_path, f"{i}.pth.tar")
+        cache_path = os.path.join(save_path, f"{i}")
 
         if os.path.exists(weights_path):
             unlearned_model.load_state_dict(torch.load(weights_path, map_location=DEVICE, weights_only=True))
             unlearned_model.to(DEVICE)
             unlearned_model.eval()
-            return unlearned_model
         else:
-            forget_idx = np.array(list( set(self.idxs["unlearn"]).union(set(self.idxs["valid"])).intersection(self.shadow_col[i]) ))
-            retain_idx = np.array(list( set(self.idxs["unlearn"]).union(set(self.idxs["valid"])).difference(self.shadow_col[i])   ))
+            forget_idx = np.array(list(set(self.idxs["unlearn"]).union(set(self.idxs["valid"])).intersection(self.shadow_col[i])))
+            retain_idx = np.array(list(set(self.idxs["unlearn"]).union(set(self.idxs["valid"])).difference(self.shadow_col[i])))
             print(">>>", forget_idx[:5], retain_idx[:5])
 
             forget_set = self.dataset.get_subset(forget_idx)
@@ -60,15 +61,17 @@ class Attack_Framework():
                 forget_valid = None, retain_valid = None,
             )
 
-            if not os.path.exists(os.path.join(save_path, f"{i}")):
-                os.makedirs(os.path.join(save_path, f"{i}"))
+            if not os.path.exists(cache_path):
+                os.makedirs(cache_path)
             ce = nn.CrossEntropyLoss()
-            unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], ce, os.path.join(save_path, f"{i}"), self.unlearn_args)
+            unlearn_method = unlearn.create_unlearn_method(self.unlearn_args.unlearn)(self.shadow_models[i], ce, cache_path, self.unlearn_args)
             unlearn_method.prepare_unlearn(unlearn_dataloaders)
             unlearned_model = unlearn_method.get_unlearned_model()
             torch.save(unlearned_model.state_dict(), weights_path)
 
-            return unlearned_model
+        if os.path.exists(cache_path):  # Cleanup
+            shutil.rmtree(cache_path)
+        return unlearned_model
 
     def set_include_exclude(self, target_idx):
         include, exclude = [], []
@@ -88,3 +91,10 @@ class Attack_Framework():
         return summary
     def get_roc(self, target_model, **kwargs):
         return
+
+    @staticmethod
+    def w(output, label):
+        # with torch.no_grad():
+        #     w = F.softmax(output, dim=1)[0, label.item()].item()
+        # return np.log(w / (1 - w))
+        return output[0, label.item()].item()

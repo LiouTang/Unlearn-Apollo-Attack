@@ -33,12 +33,12 @@ class ULiRA(Attack_Framework):
             model = self.unlearned_shadow_models[i]
             with torch.no_grad():
                 target_output = model(target_input)
-            w_in.append(w(target_output, target_label))
+            w_in.append(self.w(target_output, target_label))
         for i in self.exclude:
             model = self.shadow_models[i]
             with torch.no_grad():
                 target_output = model(target_input)
-            w_ex.append(w(target_output, target_label))
+            w_ex.append(self.w(target_output, target_label))
         self.summary[name][idx] = {
             "target_input"      : target_input,
             "target_label"      : target_label,
@@ -50,7 +50,6 @@ class ULiRA(Attack_Framework):
     def get_roc(self, **kwargs):
         tp, fp, fn, tn = [], [], [], []
         p = {}
-        ths = np.arange(-5, 5, 1e-2)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:
@@ -58,12 +57,13 @@ class ULiRA(Attack_Framework):
             for i in self.summary[name]:
                 with torch.no_grad():
                     target_output = self.target_model(self.summary[name][i]["target_input"])
-                target_w = w(target_output, self.summary[name][i]["target_label"])
+                target_w = self.w(target_output, self.summary[name][i]["target_label"])
                 if (len(self.summary[name][i]["w_in"]) == 0) or (len(self.summary[name][i]["w_ex"]) == 0):
-                    p[name][i] = 1
+                    p[name][i] = np.log(1)
                 else:
-                    p[name][i] = pr(target_w, self.summary[name][i]["w_in"]) / (pr(target_w, self.summary[name][i]["w_ex"]) + 1e-6)
+                    p[name][i] = np.log(pr(target_w, self.summary[name][i]["w_in"]) / (pr(target_w, self.summary[name][i]["w_ex"]) + 1e-9))
 
+        ths = np.unique([p["valid"][i] for i in self.summary[name]])
         for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "valid"]:
@@ -79,12 +79,6 @@ class ULiRA(Attack_Framework):
             fn.append(_fn)
             tn.append(_tn)
         return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
-
-def w(output, label):
-    # with torch.no_grad():
-    #     w = F.softmax(output, dim=1)[0, label.item()].item()
-    # return np.log(w / (1 - w))
-    return output[0, label.item()].item()
 
 def pr(x, obs):
     mean, std = norm.fit(obs)

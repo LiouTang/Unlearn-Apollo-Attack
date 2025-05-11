@@ -164,6 +164,7 @@ cython_debug/
 /data
 /**save**
 **test**
+**temp**
 /Fig
 /Results
 **.pdf

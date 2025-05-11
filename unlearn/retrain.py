@@ -29,10 +29,10 @@ class Retrain(UnlearnMethod):
         # self.epochs = 10
         # self.sched = 'cosine'
         # CIFAR-10
-        self.opt = 'sgd'
+        self.opt = 'adamw'
         self.momentum = 0.9
         self.weight_decay = 5e-4
-        self.lr = 1e-3
+        self.lr = 1e-4
         self.epochs = 50
         self.sched = 'cosine'
 
@@ -59,10 +59,8 @@ class Retrain(UnlearnMethod):
         if self.sched == "cosine":
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.epochs)
 
-        # weights_save_path = os.path.join(self.save_path, "checkpoint", datetime.now().strftime("%Y%m%d-%H%M%S"))
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
-        weights_path = os.path.join(self.save_path, f"retrain-seed-{self.seed}.pth.tar")
 
         best_acc = None 
         best_epoch = None 
@@ -88,12 +86,13 @@ class Retrain(UnlearnMethod):
                 f"{epoch}-forget", forget_train_metrics, forget_valid_metrics, os.path.join(self.save_path, f"summary-retrain-seed-{self.seed}.csv"),
             )
             if best_acc is None or best_acc < retain_valid_metrics["top1"]:  
-                print("saving weights file to {}".format(weights_path))
-                torch.save(self.model.state_dict(), weights_path)
+                # print("saving weights file to {}".format(weights_path))
+                # torch.save(self.model.state_dict(), weights_path)
+                best_model = self.model.copy()
                 best_acc = retain_valid_metrics["top1"]
                 best_epoch = epoch
         print('*** Best metric: {0} (epoch {1})'.format(best_acc, best_epoch))
-        return self.model 
+        return best_model
         
     def get_params(self) -> dict:
         self.params = {

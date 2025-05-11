@@ -70,7 +70,7 @@ class Apollo(Attack_Framework):
             with torch.no_grad():
                 for i in self.exclude:
                     output = self.shadow_models[i](adv_input)
-                    sum += F.softmax(output, dim=1)[0, target_label].item()
+                    sum += self.w(output, target_label)
             conf.append(sum / len(self.exclude))
         return conf, pred
 
@@ -96,14 +96,15 @@ class Apollo(Attack_Framework):
 
         tp, fp, fn, tn = [], [], [], []
         gt, conf, pred = {}, {}, {}
-        ths = np.arange(0, 1, 1e-2)
 
         print("Calculating Results!")
         for name in ["unlearn", "valid"]:
-            gt[name] = (torch.cat([ self.summary[name][i]["target_label"] for i in self.summary[name] ], dim=0).cpu().numpy())
+            gt[name] =  torch.cat([self.summary[name][i]["target_label"]   for i in self.summary[name]], dim=0).cpu().numpy()
             conf[name] = np.array([self.summary[name][i][f"{prefix}_conf"] for i in self.summary[name]])
             pred[name] = np.array([self.summary[name][i][f"{prefix}_pred"] for i in self.summary[name]])
 
+        ths = np.unique(conf["valid"])
+        print(ths)
         for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "valid"]:
