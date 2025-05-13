@@ -63,6 +63,11 @@ class Apollo(Attack_Framework):
                 adv_input.data.clamp_(0.0, 1.0)
 
             with torch.no_grad():
+                projected = proj_out(target_input, adv_input.data, self.args.eps * (epoch) / (self.args.atk_epochs))
+                adv_input.data.copy_(projected)
+                adv_input.data.clamp_(0.0, 1.0)
+
+            with torch.no_grad():
                 adv_output = self.target_model(adv_input)
             pred.append(adv_output.max(1)[1].item())
 
@@ -185,4 +190,10 @@ def proj(A: torch.Tensor, B: torch.Tensor, r: float):
     with torch.no_grad():
         d = (B - A).view(-1).norm(p=2).item()
         scale = min(1.0, r / (d + 1e-9))
+        return A + (B - A) * scale
+
+def proj_out(A: torch.Tensor, B: torch.Tensor, r: float):
+    with torch.no_grad():
+        d = (B - A).view(-1).norm(p=2).item()
+        scale = max(1.0, r / (d + 1e-9))
         return A + (B - A) * scale
