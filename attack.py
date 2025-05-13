@@ -98,8 +98,8 @@ def main():
         surr_split = {}
         surr_split["unlearn"] = setminus(target_split_orig["unlearn"], target_split["unlearn"])
         surr_split["valid"]   = setminus(target_split_orig["valid"],   target_split["valid"])
-        surr_split["unlearn"] = np.random.choice(surr_split["unlearn"], len(surr_split["unlearn"]), replace=False)
-        surr_split["valid"]   = np.random.choice(surr_split["valid"],   len(surr_split["unlearn"]), replace=False)
+        surr_split["unlearn"] = np.random.choice(surr_split["unlearn"], args.N, replace=False)
+        surr_split["valid"]   = np.random.choice(surr_split["valid"],   args.N, replace=False)
         surr_idxs, surr_loaders = get_idx_loaders(surr_split, dataset)
 
     # Target

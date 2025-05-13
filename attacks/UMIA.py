@@ -63,7 +63,7 @@ class UMIA(Attack_Framework):
         for name in ["unlearn", "valid"]:
             p[name] = {}
             for i in self.summary[name]:
-                p[name][i] = self.summary[name][i]["p"][0, 1]
+                p[name][i] = softmax(self.summary[name][i]["p"])
 
         ths = np.unique([p["valid"][i] for i in self.summary[name]])
         for th in tqdm(ths):
@@ -87,3 +87,6 @@ def cat(A, B) -> torch.Tensor:
         return B
     else:
         return torch.cat([A, B], dim=0)
+
+def softmax(output):
+    return np.exp(output[0, 1]) / np.sum(np.exp(output))
