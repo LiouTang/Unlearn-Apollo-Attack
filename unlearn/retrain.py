@@ -33,7 +33,7 @@ class Retrain(UnlearnMethod):
         self.momentum = 0.9
         self.weight_decay = 5e-4
         self.lr = 1e-4
-        self.epochs = 50
+        self.epochs = 25
         self.sched = 'cosine'
 
     def prepare_unlearn(self, unlearn_dataloaders: dict) -> None:

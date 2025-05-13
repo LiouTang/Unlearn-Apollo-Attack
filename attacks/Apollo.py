@@ -104,7 +104,6 @@ class Apollo(Attack_Framework):
             pred[name] = np.array([self.summary[name][i][f"{prefix}_pred"] for i in self.summary[name]])
 
         ths = np.unique(conf["valid"])
-        print(ths)
         for th in tqdm(ths):
             _tp, _fp, _fn, _tn = 0, 0, 0, 0
             for name in ["unlearn", "valid"]:
@@ -146,7 +145,7 @@ class Apollo_Offline(Apollo):
         loss_rt = F.cross_entropy(flat, label_rep)
         top2_vals, _ = outputs.topk(2, dim=-1)
         loss_db = top2_vals[0, :, 0] - top2_vals[0, :, 1]
-        return -self.args.w[0] * loss_rt + self.args.w[1] * loss_db
+        return self.args.w[0] * loss_db - self.args.w[1] * loss_rt
     def batched_loss_Over(self, input, label):
         outputs = torch.vmap(
             lambda ps, bs, xx: functional_call(self.temp, ps, (xx,), {}, tie_weights=True, strict=False),
@@ -159,7 +158,7 @@ class Apollo_Offline(Apollo):
         loss_rt = F.cross_entropy(flat, label_rep)
         top2_vals, _ = outputs.topk(2, dim=-1)
         loss_db = top2_vals[0, :, 0] - top2_vals[0, :, 1]
-        return self.args.w[0] * loss_rt + self.args.w[1] * loss_db
+        return self.args.w[0] * loss_db + self.args.w[1] * loss_rt
 
 
 def batched_models_(models_list):

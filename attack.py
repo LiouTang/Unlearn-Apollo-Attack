@@ -38,6 +38,20 @@ def plot_results(tp, fp, fn, tn, ths, title, path):
     plt.savefig(os.path.join(path, title + ".pdf"))
     return
 
+def setminus(A, B):
+    return np.array(list(set(A).difference(set(B))))
+
+def get_idx_loaders(split, dataset):
+    unlearn_set = dataset.get_subset(split["unlearn"])
+    valid_set   = dataset.get_subset(split["valid"])
+
+    unlearn_loader = DataLoader(unlearn_set, batch_size=1, shuffle=False, num_workers=4)
+    valid_loader   = DataLoader(valid_set,   batch_size=1, shuffle=False, num_workers=4)
+
+    idxs    = OrderedDict(unlearn = split["unlearn"], valid = split["valid"])
+    loaders = OrderedDict(unlearn = unlearn_loader,   valid = valid_loader)
+    return idxs, loaders
+
 def main():
     parser = argparse.ArgumentParser(description='Attack Config')
     parser.add_argument('--data_dir',       type=str,   default='./data',   help='path to dataset')
@@ -46,9 +60,7 @@ def main():
     parser.add_argument('--model',          type=str,   default='ResNet18', help='model architechture (default: "ResNet18"')
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')
     parser.add_argument('--input_size',     type=int,   default=None,       nargs=3, help='Input all image dimensions (d h w, e.g. --input_size 3 224 224)')
-    # parser.add_argument('--batch_size',     type=int,   default=128,        help='input batch size for training (default: 128)')
     parser.add_argument('--target_path',    type=str,   default='',         help='Initialize target (unlearned) model from this path (default: none)')
-    parser.add_argument('--origin_path',    type=str,   default='',         help='Initialize original (learned) model from this path (default: none)')
 
     parser.add_argument('--num_shadow',     type=int,   default=16,         help='number of shadow models (default: 16)')
     parser.add_argument('--shadow_model',   type=str,   default='ResNet18', help='shadow model architechture (default: "ResNet18"')
@@ -73,22 +85,22 @@ def main():
     # Dataloaders
     dataset = create_dataset(dataset_name=args.dataset, setting="Partial", root=args.data_dir, img_size=args.input_size[-1])
     with open(os.path.join(args.target_path, "data_split.pkl"), "rb") as f:
-        data_split = pkl.load(f)
+        target_split_orig = pkl.load(f)
 
-    print(data_split["unlearn"][:10], data_split["retain"][:10])
-    data_split["unlearn"] = np.random.choice(data_split["unlearn"], args.N, replace=False)
-    data_split["retain"]  = np.random.choice(data_split["retain"],  args.N, replace=False)
-    data_split["valid"]   = np.random.choice(data_split["valid"],   args.N, replace=False)
-    forget_set = dataset.get_subset(data_split["unlearn"])
-    # retain_set = dataset.get_subset(data_split["retain"])
-    valid_set  = dataset.get_subset(data_split["valid"])
+    print(target_split_orig["unlearn"][:10], target_split_orig["retain"][:10])
+    target_split = {}
+    target_split["unlearn"] = np.random.choice(target_split_orig["unlearn"], args.N, replace=False)
+    target_split["valid"]   = np.random.choice(target_split_orig["valid"],   args.N, replace=False)
+    target_idxs, target_loaders = get_idx_loaders(target_split, dataset)
 
-    forget_loader = DataLoader(forget_set, batch_size=1, shuffle=False, num_workers=4)
-    # retain_loader = DataLoader(retain_set, batch_size=1, shuffle=False, num_workers=4)
-    valid_loader  = DataLoader(valid_set,   batch_size=1, shuffle=False, num_workers=4)
-
-    idxs            = OrderedDict(unlearn = data_split["unlearn"],  valid = data_split["valid"]) # retain = data_split["retain"],
-    unlearn_loaders = OrderedDict(unlearn = forget_loader,          valid = valid_loader)        # retain = retain_loader,
+    # U-MIA Functionality
+    if (args.atk == "UMIA"):
+        surr_split = {}
+        surr_split["unlearn"] = setminus(target_split_orig["unlearn"], target_split["unlearn"])
+        surr_split["valid"]   = setminus(target_split_orig["valid"],   target_split["valid"])
+        surr_split["unlearn"] = np.random.choice(surr_split["unlearn"], len(surr_split["unlearn"]), replace=False)
+        surr_split["valid"]   = np.random.choice(surr_split["valid"],   len(surr_split["unlearn"]), replace=False)
+        surr_idxs, surr_loaders = get_idx_loaders(surr_split, dataset)
 
     # Target
     target_model = create_model(model_name=args.model, num_classes=args.num_classes)
@@ -122,17 +134,18 @@ def main():
         dataset=dataset,
         shadow_models=shadow_models,
         args=args,
-        idxs=idxs,
+        idxs=target_idxs,
         shadow_col=data_split["shadow_col"],
         unlearn_args=unlearn_args,
     )
-    for name, loader in unlearn_loaders.items():
+    if (args.atk == "UMIA"):
+        Atk.train_surr(surr_idxs, surr_loaders)
+    for name, loader in target_loaders.items():
         print(name)
-        for i, (target_input, target_label) in enumerate(pbar := tqdm(loader)):
-            Atk.set_include_exclude(target_idx=idxs[name][i])
-
-            target_input, target_label = target_input.to(DEVICE), target_label.to(DEVICE)
-            Atk.update_atk_summary(name, target_input, target_label, idxs[name][i])
+        for i, (input, label) in enumerate(pbar := tqdm(loader)):
+            Atk.set_include_exclude(target_idx=target_idxs[name][i])
+            input, label = input.to(DEVICE), label.to(DEVICE)
+            Atk.update_atk_summary(name, input, label, target_idxs[name][i])
             if (args.debug):
                 return
     
