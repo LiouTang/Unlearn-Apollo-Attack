@@ -23,17 +23,22 @@ class Apollo(Attack_Framework):
 
     def set_include_exclude(self, target_idx):
         super().set_include_exclude(target_idx)
-        self.temp_un, self.params_un, self.buffers_un = batched_models_(
-            [self.unlearned_shadow_models[i] for i in self.include]
-        )
-        self.temp_rt, self.params_rt, self.buffers_rt = batched_models_(
-            [self.shadow_models[i] for i in self.exclude]
-        )
+        if (len(self.include)):
+            self.temp_un, self.params_un, self.buffers_un = batched_models_(
+                [self.unlearned_shadow_models[i] for i in self.include]
+            )
+        if (len(self.exclude)):
+            self.temp_rt, self.params_rt, self.buffers_rt = batched_models_(
+                [self.shadow_models[i] for i in self.exclude]
+            )
 
 
     def batched_loss(self, input, label):
-        loss_un = batched_loss_(input, label, self.temp_un, self.params_un, self.buffers_un)
-        loss_rt = batched_loss_(input, label, self.temp_rt, self.params_rt, self.buffers_rt)
+        loss_un, loss_rt = 0., 0.
+        if (len(self.include)):
+            loss_un = batched_loss_(input, label, self.temp_un, self.params_un, self.buffers_un)
+        if (len(self.exclude)):            
+            loss_rt = batched_loss_(input, label, self.temp_rt, self.params_rt, self.buffers_rt)
         return  self.args.w[0] * loss_un - self.args.w[1] * loss_rt
     def batched_loss_Under(self, input, label):
         return  self.batched_loss(input, label)
@@ -76,7 +81,10 @@ class Apollo(Attack_Framework):
                 for i in self.exclude:
                     output = self.shadow_models[i](adv_input)
                     sum += self.w(output, target_label)
-            conf.append(sum / len(self.exclude))
+            if (len(self.exclude)):
+                conf.append(sum / len(self.exclude))
+            else:
+                conf.append(0.)
         return conf, pred
 
     def update_atk_summary(self, name, target_input, target_label, idx):
