@@ -63,12 +63,12 @@ class Apollo(Attack_Framework):
             optimizer.step()
 
             with torch.no_grad():
-                projected = proj(target_input, adv_input.data, self.args.eps * (epoch + 1) / (self.args.atk_epochs))
+                projected = proj(target_input, adv_input.data, self.args.eps * (epoch + 1))
                 adv_input.data.copy_(projected)
                 adv_input.data.clamp_(0.0, 1.0)
 
             with torch.no_grad():
-                projected = proj_out(target_input, adv_input.data, self.args.eps * (epoch) / (self.args.atk_epochs))
+                projected = proj_out(target_input, adv_input.data, self.args.eps * (epoch))
                 adv_input.data.copy_(projected)
                 adv_input.data.clamp_(0.0, 1.0)
 
