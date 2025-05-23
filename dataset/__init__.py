@@ -1,6 +1,6 @@
 from .cifar10   import PartialCIFAR10
 from .cifar100  import PartialCIFAR100
-# from .svhn      import PartialSVHN
+from .svhn      import PartialSVHN
 from .toydata   import PartialToyData
 from .partial_dataset import PartialDataset
 

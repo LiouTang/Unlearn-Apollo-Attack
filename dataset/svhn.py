@@ -14,3 +14,4 @@ class PartialSVHN(PartialDataset):
         super().__init__("SVHN", root, img_size, "Partial")
         transform = transforms.Compose([transforms.ToTensor(), transforms.Resize(img_size, antialias=True)])
         self.full_dataset = SVHN(root=self.root, train=True,  download=True, transform=transform)
+        self.train_len, self.shadow_len, self.valid_len, = 20000, 20000, 10000

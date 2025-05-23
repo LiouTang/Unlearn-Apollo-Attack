@@ -45,7 +45,7 @@ class Apollo(Attack_Framework):
     def batched_loss_Over(self, input, label):
         return  -self.batched_loss(input, label)
 
-    def Un_Adv(self, target_input, target_label, loss_func):
+    def Un_Adv(self, target_input: torch.Tensor, target_label: torch.Tensor, loss_func):
         # Under-Unlearning: Given target (x, y), adv. input x',
         # original model (x in train set) x' --> y
         # unlearned model (x in unlearned set) x' --> y
@@ -63,12 +63,8 @@ class Apollo(Attack_Framework):
             optimizer.step()
 
             with torch.no_grad():
-                projected = proj(target_input, adv_input.data, self.args.eps * (epoch + 1))
-                adv_input.data.copy_(projected)
-                adv_input.data.clamp_(0.0, 1.0)
-
-            with torch.no_grad():
-                projected = proj_out(target_input, adv_input.data, self.args.eps * (epoch))
+                projected = proj(target_input, adv_input.data, self.args.eps * (epoch + 1), "in")
+                projected = proj(target_input, projected,      self.args.eps * (epoch), "out")
                 adv_input.data.copy_(projected)
                 adv_input.data.clamp_(0.0, 1.0)
 
@@ -190,18 +186,11 @@ def batched_loss_(input, label, temp, params, buffers):
     label_rep = label.repeat(outputs.size(0))
     return F.cross_entropy(flat, label_rep)
 
-def normalize(tensor: torch.Tensor):
-    norm = torch.norm(tensor, p=2, dim=-1, keepdim=True)
-    return tensor / (norm + 1e-9), norm
-
-def proj(A: torch.Tensor, B: torch.Tensor, r: float):
+def proj(A: torch.Tensor, B: torch.Tensor, r: float, type):
     with torch.no_grad():
         d = (B - A).view(-1).norm(p=2).item()
-        scale = min(1.0, r / (d + 1e-9))
-        return A + (B - A) * scale
-
-def proj_out(A: torch.Tensor, B: torch.Tensor, r: float):
-    with torch.no_grad():
-        d = (B - A).view(-1).norm(p=2).item()
-        scale = max(1.0, r / (d + 1e-9))
+        if (type == "in"):
+            scale = min(1.0, r / (d + 1e-9))
+        else:
+            scale = max(1.0, r / (d + 1e-9))
         return A + (B - A) * scale

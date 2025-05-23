@@ -70,10 +70,10 @@ def main():
     parser.add_argument('--atk',            type=str,   default='Apollo',   help='Attack Name')
     parser.add_argument('--atk_lr',         type=float, default=1e-1,       help='Attack learning rate')
     parser.add_argument('--atk_epochs',     type=int,   default=30,         help='number of epochs for attack (default: 30)')
-    parser.add_argument('--w',              type=float, default=None,       nargs=3, help='Adv. loss function weights')
+    parser.add_argument('--w',              type=float, default=None,       nargs=2, help='Adv. loss function weights')
     parser.add_argument('--eps',            type=float, default=10,         help='epsilon for bound')
 
-    parser.add_argument('--save_to',        type=str,   default='./results',   help='save results to this path')
+    parser.add_argument('--save_to',        type=str,   required=True,      help='save results to this path')
     parser.add_argument('--debug',                      action="store_true")
 
     parser.add_argument('--seed',           type=int,   default=42,         help='random seed (default: 42)')
@@ -144,20 +144,22 @@ def main():
         print(name)
         for i, (input, label) in enumerate(pbar := tqdm(loader)):
             Atk.set_include_exclude(target_idx=target_idxs[name][i])
-            input, label = input.to(DEVICE), label.to(DEVICE)
+            input, label = input.to(DEVICE), label.to(torch.int64).to(DEVICE)
             Atk.update_atk_summary(name, input, label, target_idxs[name][i])
-            if (args.debug):
-                return
     
     # Save Summary
-    summary_path = os.path.join(args.save_to, "summary")
+    base_path = os.path.join(
+        args.save_to, f"{unlearn_args.model}-{unlearn_args.dataset}",
+        f"perc-{unlearn_args.forget_perc}-class-{unlearn_args.forget_class}"
+    )
+    summary_path = os.path.join(base_path, "summary")
     if (not os.path.exists(summary_path)):
         os.makedirs(summary_path)
     with open(os.path.join(summary_path, f"{args.atk}-{unlearn_args.unlearn}.pkl"), "wb") as f:
         pkl.dump(Atk.get_atk_summary(), f)
 
     # Interpret results
-    roc_path = os.path.join(args.save_to, "roc")
+    roc_path = os.path.join(base_path, "roc")
     if (not os.path.exists(roc_path)):
         os.makedirs(roc_path)
     for type in Atk.types:
@@ -170,7 +172,7 @@ def main():
         plot_results(
             tp, fp, fn, tn, ths,
             f"{args.atk}-{unlearn_args.unlearn}-{type}",
-            os.path.join(args.save_to, "figs")
+            os.path.join(base_path, "figs")
         )
 
 if __name__ == '__main__':

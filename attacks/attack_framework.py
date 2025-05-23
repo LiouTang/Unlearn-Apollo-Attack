@@ -35,7 +35,13 @@ class Attack_Framework():
 
     def get_unlearned_model(self, i: int):
         unlearned_model = create_model(model_name=self.args.shadow_model, num_classes=self.args.num_classes)
-        save_path = os.path.join(self.args.shadow_path, f"{self.unlearn_args.size_train}-{self.unlearn_args.unlearn}-{self.args.N}")
+        save_path = os.path.join(
+            self.args.shadow_path,
+            f"{self.unlearn_args.size_train}",                                      # Target train set
+            f"{self.unlearn_args.forget_perc}-{self.unlearn_args.forget_class}",    # Target unlearned set
+            f"{self.args.N}",                                                       # Target samples
+            f"{self.unlearn_args.unlearn}",                                         # Unlearning method
+        )
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         weights_path = os.path.join(save_path, f"{i}.pth.tar")
