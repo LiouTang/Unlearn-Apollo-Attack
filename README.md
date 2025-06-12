@@ -1,6 +1,25 @@
 # Apollo: <u>A</u> <u>Po</u>steriori <u>L</u>abe<u>l</u>-<u>O</u>nly Membership Inference Attack Towards Machine Unlearning
 
-This is the code for our paper *Apollo: <u>A</u> <u>Po</u>steriori <u>L</u>abe<u>l</u>-<u>O</u>nly Membership Inference Attack Towards Machine Unlearning*.
+**Liou Tang<sup>1</sup>, James Joshi<sup>1</sup>, Ashish Kundu<sup>2</sup>**
+
+<sup>1</sup>: University of Pittsburgh, Pittsburgh, PA, USA  
+<sup>2</sup>: Cisco Research, San Jose, CA, USA
+
+Contact: <liou.tang@pitt.edu>
+
+---
+
+This is the code for our preprint [*Apollo: <u>A</u> <u>Po</u>steriori <u>L</u>abe<u>l</u>-<u>O</u>nly Membership Inference Attack Towards Machine Unlearning*](https://arxiv.org/abs/2506.09923) available at arXiv. Please cite our paper if you find our work helpful:
+
+```
+@article{tang2025apollo,
+      title={Apollo: A Posteriori Label-Only Membership Inference Attack Towards Machine Unlearning}, 
+      author={Liou Tang and James Joshi and Ashish Kundu},
+      journal={CoRR},
+      volume={abs/2506.09923},
+      year= {2025}
+}
+```
 
 ## 1. Requirements
 
@@ -58,4 +77,4 @@ For the online version of `Apollo` and `U-LiRA`, the attack will try to unlearn 
 
 ## 3. Acknowledgements
 
-Many of the code used in this repository are forked from the implementations of [Huang et al.](https://github.com/K1nght/Unified-Unlearning-w-Remain-Geometry), as noted in our paper. We thank the authors for making their code public.
+Many of the code used in this repository are forked from the [code implementations](https://github.com/K1nght/Unified-Unlearning-w-Remain-Geometry) of [Huang et al.](https://arxiv.org/abs/2409.19732), as noted in our paper. We thank the authors for making their code public.
