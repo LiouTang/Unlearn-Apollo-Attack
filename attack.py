@@ -1,5 +1,7 @@
 import os
 import argparse
+import time
+
 import numpy as np
 from collections import OrderedDict
 import pickle as pkl
@@ -140,13 +142,19 @@ def main():
     )
     if (args.atk == "UMIA"):
         Atk.train_surr(surr_idxs, surr_loaders)
+    time_col = []
     for name, loader in target_loaders.items():
         print(name)
         for i, (input, label) in enumerate(pbar := tqdm(loader)):
             Atk.set_include_exclude(target_idx=target_idxs[name][i])
+            start_time = time.time()
             input, label = input.to(DEVICE), label.to(torch.int64).to(DEVICE)
+            end_time = time.time()
+            time_col.append(end_time - start_time)
             Atk.update_atk_summary(name, input, label, target_idxs[name][i])
-    
+
+    print("Time Used:", np.mean(time_col), np.std(time_col))
+
     # Save Summary
     base_path = os.path.join(
         args.save_to, f"{unlearn_args.model}-{unlearn_args.dataset}",
