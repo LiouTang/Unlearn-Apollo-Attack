@@ -49,7 +49,7 @@ class ULiRA(Attack_Framework):
     
     def get_ternary_results(self, **kwargs):
         p = {}
-        print("Calculating Ternary Results!")
+        print("Calculating ULiRA Ternary Results!")
         
         for name in ["unlearn", "retain", "test"]:
             p[name] = {}
@@ -58,11 +58,15 @@ class ULiRA(Attack_Framework):
                     target_output = self.target_model(self.summary[name][i]["target_input"])
                 target_w = self.w(target_output, self.summary[name][i]["target_label"])
                 if (len(self.summary[name][i]["w_in"]) == 0) or (len(self.summary[name][i]["w_ex"]) == 0):
-                    p[name][i] = np.log(1)
+                    p[name][i] = np.log(1)  # Neutral likelihood ratio
                 else:
                     p[name][i] = np.log(pr(target_w, self.summary[name][i]["w_in"]) / (pr(target_w, self.summary[name][i]["w_ex"]) + 1e-9))
 
-        ths = np.unique([p["test"][i] for i in self.summary["test"]])
+        all_ratios = []
+        for name in ["unlearn", "retain", "test"]:
+            for i in self.summary[name]:
+                all_ratios.append(p[name][i])
+        ths = np.unique(all_ratios)
         ternary_points = []
         
         for th in tqdm(ths):
@@ -71,18 +75,16 @@ class ULiRA(Attack_Framework):
             
             for name in ["unlearn", "retain", "test"]:
                 for i in self.summary[name]:
-                    # High likelihood ratio indicates membership in unlearn set
-                    if p[name][i] > th:
+                    likelihood_ratio = p[name][i]
+                    if likelihood_ratio > th:
                         classifications["unlearn"] += 1
                     else:
-                        # Low likelihood ratio indicates retain or test
-                        if name == "retain":
-                            classifications["retain"] += 1
-                        else:
+                        if name == "test":
                             classifications["test"] += 1
+                        else:
+                            classifications["retain"] += 1
                     total_samples += 1
-            
-            # Convert to proportions for ternary plot
+
             if total_samples > 0:
                 ternary_point = [
                     classifications["unlearn"] / total_samples,

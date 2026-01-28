@@ -57,14 +57,18 @@ class UMIA(Attack_Framework):
 
     def get_ternary_results(self, **kwargs):
         p = {}
-        print("Calculating Ternary Results!")
+        print("Calculating UMIA Ternary Results!")
         
         for name in ["unlearn", "retain", "test"]:
             p[name] = {}
             for i in self.summary[name]:
                 p[name][i] = softmax(self.summary[name][i]["p"])
 
-        ths = np.unique([p["test"][i] for i in self.summary["test"]])
+        all_probs = []
+        for name in ["unlearn", "retain", "test"]:
+            for i in self.summary[name]:
+                all_probs.append(p[name][i])
+        ths = np.unique(all_probs)
         ternary_points = []
         
         for th in tqdm(ths):
@@ -73,18 +77,16 @@ class UMIA(Attack_Framework):
             
             for name in ["unlearn", "retain", "test"]:
                 for i in self.summary[name]:
-                    # High probability indicates membership in unlearn set
-                    if p[name][i] > th:
+                    likelihood_ratio = p[name][i]
+                    if likelihood_ratio > th:
                         classifications["unlearn"] += 1
                     else:
-                        # Low probability could indicate retain or test
-                        if name == "retain":
-                            classifications["retain"] += 1
-                        else:
+                        if name == "test":
                             classifications["test"] += 1
+                        else:
+                            classifications["retain"] += 1
                     total_samples += 1
-            
-            # Convert to proportions for ternary plot
+
             if total_samples > 0:
                 ternary_point = [
                     classifications["unlearn"] / total_samples,

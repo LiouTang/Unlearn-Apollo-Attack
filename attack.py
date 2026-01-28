@@ -44,9 +44,13 @@ def plot_ternary_results(ternary_points, threshold_data, title, path):
             # Scale to 100 and convert to integers for ternary library
             ternary_coord = tuple((normalized_point * scale).astype(int))
             
-            # Use threshold pair magnitude as color value for Apollo
+            # Use threshold ratio as color value for Apollo (over-threshold / under-threshold)
             if hasattr(threshold_data[i], '__len__') and len(threshold_data[i]) == 2:
-                color_val = np.sqrt(threshold_data[i][0]**2 + threshold_data[i][1]**2)
+                under_th, over_th = threshold_data[i][0], threshold_data[i][1]  # threshold_pairs are (under_th, over_th)
+                if abs(under_th) > 1e-8:  # Avoid division by zero
+                    color_val = over_th / under_th
+                else:
+                    color_val = over_th  # Fallback when under_th is near zero
             else:
                 color_val = threshold_data[i] if i < len(threshold_data) else 0
             
@@ -57,7 +61,15 @@ def plot_ternary_results(ternary_points, threshold_data, title, path):
         coords, threshold_values = zip(*ternary_data)
         
         # Create scatter plot for data points
-        tax.scatter(coords, colormap='viridis', c=threshold_values, s=50, alpha=0.7, label='Attack Results')
+        scatter = tax.scatter(coords, colormap='viridis', c=threshold_values, s=50, alpha=0.7, label='Attack Results')
+        
+        # Add colorbar for threshold ratios
+        cbar = plt.colorbar(scatter, ax=ax, shrink=0.8, aspect=20, pad=0.1)
+        # Determine colorbar label based on threshold data structure
+        if hasattr(threshold_data[0], '__len__') and len(threshold_data[0]) == 2:
+            cbar.set_label('Threshold Ratio (Over/Under)', rotation=270, labelpad=15, fontsize=10)
+        else:
+            cbar.set_label('Threshold Value', rotation=270, labelpad=15, fontsize=10)
         
         # Plot optimal reference point (ideal unlearning performance)
         # Optimal: equal classification into each category (1/3, 1/3, 1/3)
