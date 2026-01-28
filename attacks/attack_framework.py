@@ -52,9 +52,9 @@ class Attack_Framework():
             unlearned_model.to(DEVICE)
             unlearned_model.eval()
         else:
-            full = set(self.idxs["unlearn"]).union(set(self.idxs["valid"]))
-            forget_idx = np.array(list(full.intersection(self.shadow_col[i])))
-            retain_idx = np.array(list(self.shadow_col[i].difference(full)))
+            full = set(self.idxs["unlearn"]).union(set(self.idxs["test"]))
+            forget_idx = np.array(list(full.intersection(self.shadow_col[i])), dtype=int)
+            retain_idx = np.array(list(set(self.shadow_col[i]).difference(full)), dtype=int)
             # print(">>>", forget_idx[:5], retain_idx[:5])
 
             forget_set = self.dataset.get_subset(forget_idx)

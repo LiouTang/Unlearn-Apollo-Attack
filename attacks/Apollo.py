@@ -98,40 +98,72 @@ class Apollo(Attack_Framework):
         }
         return None
 
-    def get_roc(self, **kwargs):
-        prefix      = "un" if kwargs["type"] == "Under" else "ov"
-        compare     = (lambda c, th: c < th) if kwargs["type"] == "Under" else (lambda c, th: c > th)
-        is_positive = (lambda p, g: p == g)  if kwargs["type"] == "Under" else (lambda p, g: p != g)
-
-        tp, fp, fn, tn = [], [], [], []
+    def get_ternary_results(self, **kwargs):
+        prefix = "un" if kwargs["type"] == "Under" else "ov"
+        compare = (lambda c, th: c < th) if kwargs["type"] == "Under" else (lambda c, th: c > th)
+        
         gt, conf, pred = {}, {}, {}
-
-        print("Calculating Results!")
-        for name in ["unlearn", "valid"]:
-            gt[name] =  torch.cat([self.summary[name][i]["target_label"]   for i in self.summary[name]], dim=0).cpu().numpy()
+        print("Calculating Ternary Results!")
+        
+        for name in ["unlearn", "retain", "test"]:
+            gt[name] = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
             conf[name] = np.array([self.summary[name][i][f"{prefix}_conf"] for i in self.summary[name]])
             pred[name] = np.array([self.summary[name][i][f"{prefix}_pred"] for i in self.summary[name]])
 
-        ths = np.unique(conf["valid"])
+        ths = np.unique(np.concatenate([conf["unlearn"], conf["retain"], conf["test"]]))
+        ternary_points = []
+        
         for th in tqdm(ths):
-            _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "valid"]:
+            # Classification results for each category
+            classifications = {"unlearn": 0, "retain": 0, "test": 0}
+            total_samples = 0
+            
+            for name in ["unlearn", "retain", "test"]:
                 idx = np.where(compare(conf[name], th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
                 idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
                 pred_th = pred[name][np.arange(self.args.N), idx]
-                pos = is_positive(pred_th, gt[name])
-
-                if (name == "unlearn"):
-                    _tp += np.sum(pos)
-                    _fn += np.sum(~pos)
-                else:
-                    _fp += np.sum(pos)
-                    _tn += np.sum(~pos)
-            tp.append(_tp)
-            fp.append(_fp)
-            fn.append(_fn)
-            tn.append(_tn)
-        return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
+                
+                # Determine classification based on attack type and prediction accuracy
+                if kwargs["type"] == "Under":
+                    # Under-unlearning: wrong predictions indicate forgetting (unlearn class)
+                    forgotten_samples = np.sum(pred_th != gt[name])
+                    remembered_samples = np.sum(pred_th == gt[name])
+                    
+                    if name == "unlearn":
+                        classifications["unlearn"] += forgotten_samples  # Correctly forgotten
+                        classifications["retain"] += remembered_samples   # Still remembered (under-unlearning)
+                    elif name == "retain":
+                        classifications["test"] += forgotten_samples     # Over-unlearned (problematic)
+                        classifications["retain"] += remembered_samples  # Correctly retained
+                    else:  # test
+                        classifications["test"] += forgotten_samples + remembered_samples
+                        
+                else:  # Over-unlearning
+                    # Over-unlearning: correct predictions on unlearn = under-unlearning, wrong on retain = over-unlearning
+                    correct_samples = np.sum(pred_th == gt[name])
+                    wrong_samples = np.sum(pred_th != gt[name])
+                    
+                    if name == "unlearn":
+                        classifications["retain"] += correct_samples    # Under-unlearning (still remembered)
+                        classifications["unlearn"] += wrong_samples     # Properly forgotten
+                    elif name == "retain":
+                        classifications["retain"] += correct_samples   # Properly retained
+                        classifications["unlearn"] += wrong_samples    # Over-unlearned
+                    else:  # test
+                        classifications["test"] += correct_samples + wrong_samples
+                
+                total_samples += self.args.N
+            
+            # Convert to proportions for ternary plot
+            if total_samples > 0:
+                ternary_point = [
+                    classifications["unlearn"] / total_samples,
+                    classifications["retain"] / total_samples,
+                    classifications["test"] / total_samples
+                ]
+                ternary_points.append(ternary_point)
+        
+        return np.array(ternary_points), ths
 
 class Apollo_Offline(Apollo):
     def __init__(self, target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):

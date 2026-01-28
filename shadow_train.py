@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--dataset',        type=str,   default='',         help='dataset type (default: ImageFolder/ImageTar if empty)')
     parser.add_argument('--size_shadow',    type=int,   default=2500,       help='size of shadow sets (default: 2500)')
     parser.add_argument('--num_shadow',     type=int,   default=16,         help='number of shadow models (default: 16)')
-    parser.add_argument('--split',          type=str,   default='limited',  help='split for sampling shadow models (default: "limited")')
+    parser.add_argument('--split',          type=str,   default='full',     help='split for sampling shadow models (default: "full")')
 
     parser.add_argument('--model',          type=str,   default='ResNet18', help='Name of model to train (default: "ResNet18"')
     parser.add_argument('--num_classes',    type=int,   default=None,       help='number of label classes (Model default if None)')

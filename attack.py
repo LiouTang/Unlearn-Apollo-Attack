@@ -7,6 +7,7 @@ from collections import OrderedDict
 import pickle as pkl
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import ternary
 
 import torch
 import torch.nn as nn
@@ -19,25 +20,59 @@ from dataset import create_dataset
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def plot_results(tp, fp, fn, tn, ths, title, path):
+def plot_ternary_results(ternary_points, ths, title, path):
     if not os.path.exists(path):
         os.makedirs(path)
-    sort = np.argsort(fp)
-    tp, fp, fn, tn = tp[sort], fp[sort], fn[sort], tn[sort]
-    # print(tp, fp, fn, tn)
-    tpr = tp / (tp + fn)
-    fpr = fp / (fp + tn)
-
-    plt.figure(figsize=(8, 6))
-    plt.scatter(fpr, tpr, c=ths, label='ROC (step curve)')
-    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
-    plt.colorbar()
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.grid(True)
-    # plt.legend()
-    plt.title(title)
-    plt.savefig(os.path.join(path, title + ".pdf"))
+    
+    if len(ternary_points) == 0:
+        return
+        
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Create ternary plot
+    scale = 100  # Scale to percentages
+    tax = ternary.TernaryAxesSubplot(ax=ax, scale=scale)
+    
+    # Convert proportions to ternary coordinates (scale to 100)
+    ternary_data = []
+    for i, point in enumerate(ternary_points):
+        # Normalize to ensure sum = 1
+        total = np.sum(point)
+        if total > 0:
+            normalized_point = point / total
+            # Scale to 100 and convert to integers for ternary library
+            ternary_coord = tuple((normalized_point * scale).astype(int))
+            ternary_data.append((ternary_coord, ths[i] if i < len(ths) else 0))
+    
+    if len(ternary_data) > 0:
+        # Separate coordinates and threshold values
+        coords, threshold_values = zip(*ternary_data)
+        
+        # Create scatter plot
+        tax.scatter(coords, colormap='viridis', c=threshold_values, s=50, alpha=0.7)
+        
+        # Add colorbar for thresholds
+        tax.get_axes().set_title(title, pad=20)
+        
+        # Set labels (note: ternary library uses different order)
+        tax.left_axis_label("Test (%)", offset=0.16)
+        tax.right_axis_label("Unlearn (%)", offset=0.16)  
+        tax.bottom_axis_label("Retain (%)", offset=-0.06)
+        
+        # Add grid
+        tax.gridlines(multiple=10, color="gray", alpha=0.5)
+        tax.boundary(linewidth=2.0)
+        
+        # Add ticks
+        tax.ticks(axis='lbr', linewidth=1, multiple=20)
+        
+        # Clear original axis
+        tax.clear_matplotlib_ticks()
+        
+    plt.tight_layout()
+    plt.savefig(os.path.join(path, title + ".pdf"), bbox_inches='tight', dpi=300)
+    plt.close()
     return
 
 def setminus(A, B):
@@ -45,13 +80,15 @@ def setminus(A, B):
 
 def get_idx_loaders(split, dataset):
     unlearn_set = dataset.get_subset(split["unlearn"])
-    valid_set   = dataset.get_subset(split["valid"])
+    retain_set  = dataset.get_subset(split["retain"])
+    test_set    = dataset.get_subset(split["test"])
 
     unlearn_loader = DataLoader(unlearn_set, batch_size=1, shuffle=False, num_workers=4)
-    valid_loader   = DataLoader(valid_set,   batch_size=1, shuffle=False, num_workers=4)
+    retain_loader  = DataLoader(retain_set,  batch_size=1, shuffle=False, num_workers=4)
+    test_loader    = DataLoader(test_set,    batch_size=1, shuffle=False, num_workers=4)
 
-    idxs    = OrderedDict(unlearn = split["unlearn"], valid = split["valid"])
-    loaders = OrderedDict(unlearn = unlearn_loader,   valid = valid_loader)
+    idxs    = OrderedDict(unlearn = split["unlearn"], retain = split["retain"], test = split["test"])
+    loaders = OrderedDict(unlearn = unlearn_loader,   retain = retain_loader,   test = test_loader)
     return idxs, loaders
 
 def main():
@@ -92,16 +129,19 @@ def main():
     print(target_split_orig["unlearn"][:10], target_split_orig["retain"][:10])
     target_split = {}
     target_split["unlearn"] = np.random.choice(target_split_orig["unlearn"], args.N, replace=False)
-    target_split["valid"]   = np.random.choice(target_split_orig["valid"],   args.N, replace=False)
+    target_split["retain"]  = np.random.choice(target_split_orig["retain"],  args.N, replace=False)
+    target_split["test"]    = np.random.choice(target_split_orig["valid"],   args.N, replace=False)
     target_idxs, target_loaders = get_idx_loaders(target_split, dataset)
 
     # U-MIA Functionality
     if (args.atk == "UMIA"):
         surr_split = {}
         surr_split["unlearn"] = setminus(target_split_orig["unlearn"], target_split["unlearn"])
-        surr_split["valid"]   = setminus(target_split_orig["valid"],   target_split["valid"])
+        surr_split["retain"]  = setminus(target_split_orig["retain"],  target_split["retain"])
+        surr_split["test"]    = setminus(target_split_orig["valid"],   target_split["test"])
         surr_split["unlearn"] = np.random.choice(surr_split["unlearn"], args.N, replace=False)
-        surr_split["valid"]   = np.random.choice(surr_split["valid"],   args.N, replace=False)
+        surr_split["retain"]  = np.random.choice(surr_split["retain"],  args.N, replace=False)
+        surr_split["test"]    = np.random.choice(surr_split["test"],    args.N, replace=False)
         surr_idxs, surr_loaders = get_idx_loaders(surr_split, dataset)
 
     # Target
@@ -166,19 +206,19 @@ def main():
     with open(os.path.join(summary_path, f"{args.atk}-{unlearn_args.unlearn}.pkl"), "wb") as f:
         pkl.dump(Atk.get_atk_summary(), f)
 
-    # Interpret results
-    roc_path = os.path.join(base_path, "roc")
-    if (not os.path.exists(roc_path)):
-        os.makedirs(roc_path)
+    # Interpret results with ternary plots
+    ternary_path = os.path.join(base_path, "ternary")
+    if (not os.path.exists(ternary_path)):
+        os.makedirs(ternary_path)
     for type in Atk.types:
-        tp, fp, fn, tn, ths = Atk.get_roc(type=type)
+        ternary_points, ths = Atk.get_ternary_results(type=type)
 
-        roc = {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "ths": ths}
-        with open(os.path.join(roc_path, f"{args.atk}-{unlearn_args.unlearn}-{type}.pkl"), "wb") as f:
-            pkl.dump(roc, f)
+        ternary_data = {"ternary_points": ternary_points, "ths": ths}
+        with open(os.path.join(ternary_path, f"{args.atk}-{unlearn_args.unlearn}-{type}.pkl"), "wb") as f:
+            pkl.dump(ternary_data, f)
 
-        plot_results(
-            tp, fp, fn, tn, ths,
+        plot_ternary_results(
+            ternary_points, ths,
             f"{args.atk}-{unlearn_args.unlearn}-{type}",
             os.path.join(base_path, "figs")
         )

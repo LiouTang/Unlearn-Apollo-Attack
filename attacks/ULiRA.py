@@ -47,12 +47,11 @@ class ULiRA(Attack_Framework):
         }
         return None
     
-    def get_roc(self, **kwargs):
-        tp, fp, fn, tn = [], [], [], []
+    def get_ternary_results(self, **kwargs):
         p = {}
-
-        print("Calculating Results!")
-        for name in ["unlearn", "valid"]:
+        print("Calculating Ternary Results!")
+        
+        for name in ["unlearn", "retain", "test"]:
             p[name] = {}
             for i in self.summary[name]:
                 with torch.no_grad():
@@ -63,22 +62,36 @@ class ULiRA(Attack_Framework):
                 else:
                     p[name][i] = np.log(pr(target_w, self.summary[name][i]["w_in"]) / (pr(target_w, self.summary[name][i]["w_ex"]) + 1e-9))
 
-        ths = np.unique([p["valid"][i] for i in self.summary[name]])
+        ths = np.unique([p["test"][i] for i in self.summary["test"]])
+        ternary_points = []
+        
         for th in tqdm(ths):
-            _tp, _fp, _fn, _tn = 0, 0, 0, 0
-            for name in ["unlearn", "valid"]:
+            classifications = {"unlearn": 0, "retain": 0, "test": 0}
+            total_samples = 0
+            
+            for name in ["unlearn", "retain", "test"]:
                 for i in self.summary[name]:
-                    if (name == "unlearn"):
-                        _tp += int(p[name][i] > th)
-                        _fn += int(p[name][i] <= th)
+                    # High likelihood ratio indicates membership in unlearn set
+                    if p[name][i] > th:
+                        classifications["unlearn"] += 1
                     else:
-                        _fp += int(p[name][i] > th)
-                        _tn += int(p[name][i] <= th)
-            tp.append(_tp)
-            fp.append(_fp)
-            fn.append(_fn)
-            tn.append(_tn)
-        return np.array(tp), np.array(fp), np.array(fn), np.array(tn), ths
+                        # Low likelihood ratio indicates retain or test
+                        if name == "retain":
+                            classifications["retain"] += 1
+                        else:
+                            classifications["test"] += 1
+                    total_samples += 1
+            
+            # Convert to proportions for ternary plot
+            if total_samples > 0:
+                ternary_point = [
+                    classifications["unlearn"] / total_samples,
+                    classifications["retain"] / total_samples,
+                    classifications["test"] / total_samples
+                ]
+                ternary_points.append(ternary_point)
+        
+        return np.array(ternary_points), ths
 
 def pr(x, obs):
     mean, std = norm.fit(obs)
