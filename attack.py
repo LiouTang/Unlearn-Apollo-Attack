@@ -20,17 +20,17 @@ from dataset import create_dataset
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def plot_ternary_results(ternary_points, ths, title, path):
+def plot_ternary_results(ternary_points, threshold_data, title, path):
     if not os.path.exists(path):
         os.makedirs(path)
     
     if len(ternary_points) == 0:
         return
         
-    # Create figure and axis
-    fig, ax = plt.subplots(figsize=(10, 8))
+    # Create figure and axis with proper aspect ratio for equilateral triangle
+    fig, ax = plt.subplots(figsize=(12, 10))
     
-    # Create ternary plot
+    # Create ternary plot with proper scale
     scale = 100  # Scale to percentages
     tax = ternary.TernaryAxesSubplot(ax=ax, scale=scale)
     
@@ -43,32 +43,59 @@ def plot_ternary_results(ternary_points, ths, title, path):
             normalized_point = point / total
             # Scale to 100 and convert to integers for ternary library
             ternary_coord = tuple((normalized_point * scale).astype(int))
-            ternary_data.append((ternary_coord, ths[i] if i < len(ths) else 0))
+            
+            # Use threshold pair magnitude as color value for Apollo
+            if hasattr(threshold_data[i], '__len__') and len(threshold_data[i]) == 2:
+                color_val = np.sqrt(threshold_data[i][0]**2 + threshold_data[i][1]**2)
+            else:
+                color_val = threshold_data[i] if i < len(threshold_data) else 0
+            
+            ternary_data.append((ternary_coord, color_val))
     
     if len(ternary_data) > 0:
         # Separate coordinates and threshold values
         coords, threshold_values = zip(*ternary_data)
         
-        # Create scatter plot
-        tax.scatter(coords, colormap='viridis', c=threshold_values, s=50, alpha=0.7)
+        # Create scatter plot for data points
+        tax.scatter(coords, colormap='viridis', c=threshold_values, s=50, alpha=0.7, label='Attack Results')
+        
+        # Plot optimal reference point (ideal unlearning performance)
+        # Optimal: equal classification into each category (1/3, 1/3, 1/3)
+        optimal_point = (33, 33, 34)  # Scaled to 100, accounting for rounding
+        tax.scatter([optimal_point], marker='*', s=200, c='red', 
+                   label='Optimal Reference', edgecolors='black', linewidth=2, zorder=10)
         
         # Add colorbar for thresholds
         tax.get_axes().set_title(title, pad=20)
         
-        # Set labels (note: ternary library uses different order)
-        tax.left_axis_label("Test (%)", offset=0.16)
-        tax.right_axis_label("Unlearn (%)", offset=0.16)  
-        tax.bottom_axis_label("Retain (%)", offset=-0.06)
+        # Set labels for vertices (ternary library uses left, right, bottom order)
+        tax.left_axis_label("Test (%)", offset=0.16, fontsize=12)
+        tax.right_axis_label("Forgotten (Unlearned) (%)", offset=0.16, fontsize=12)  
+        tax.bottom_axis_label("Retained (%)", offset=-0.06, fontsize=12)
         
-        # Add grid
-        tax.gridlines(multiple=10, color="gray", alpha=0.5)
+        # Add grid for better readability
+        tax.gridlines(multiple=10, color="gray", alpha=0.3, linewidth=0.5)
+        # tax.gridlines(multiple=25, color="gray", alpha=0.5, linewidth=1.0)
+        
+        # Draw boundary as equilateral triangle
         tax.boundary(linewidth=2.0)
         
-        # Add ticks
-        tax.ticks(axis='lbr', linewidth=1, multiple=20)
+        # Add ticks with proper spacing
+        tax.ticks(axis='lbr', linewidth=1, multiple=20, fontsize=10)
         
-        # Clear original axis
+        # Clear matplotlib default ticks to avoid overlap
         tax.clear_matplotlib_ticks()
+        
+        # Ensure equal aspect ratio for regular triangle
+        ax.set_aspect('equal')
+        
+        # Add legend
+        ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1), fontsize=10)
+        
+        # Add annotation for optimal point
+        ax.text(0.02, 0.98, 'Red star (*) = Optimal unlearning\n(Equal classification: 33% each)', 
+                transform=ax.transAxes, fontsize=10, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
         
     plt.tight_layout()
     plt.savefig(os.path.join(path, title + ".pdf"), bbox_inches='tight', dpi=300)
@@ -211,14 +238,14 @@ def main():
     if (not os.path.exists(ternary_path)):
         os.makedirs(ternary_path)
     for type in Atk.types:
-        ternary_points, ths = Atk.get_ternary_results(type=type)
+        ternary_points, threshold_data = Atk.get_ternary_results(type=type)
 
-        ternary_data = {"ternary_points": ternary_points, "ths": ths}
+        ternary_data = {"ternary_points": ternary_points, "threshold_data": threshold_data}
         with open(os.path.join(ternary_path, f"{args.atk}-{unlearn_args.unlearn}-{type}.pkl"), "wb") as f:
             pkl.dump(ternary_data, f)
 
         plot_ternary_results(
-            ternary_points, ths,
+            ternary_points, threshold_data,
             f"{args.atk}-{unlearn_args.unlearn}-{type}",
             os.path.join(base_path, "figs")
         )

@@ -16,7 +16,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Apollo(Attack_Framework):
     def __init__(self, target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
         super().__init__(target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
-        self.types = ["Under", "Over"]
+        self.types = ["Unified"]  # Single unified attack type
         self.unlearned_shadow_models = nn.ModuleList()
         for i in range(self.args.num_shadow):
             self.unlearned_shadow_models.append(self.get_unlearned_model(i))
@@ -99,76 +99,119 @@ class Apollo(Attack_Framework):
         return None
 
     def get_ternary_results(self, **kwargs):
-        prefix = "un" if kwargs["type"] == "Under" else "ov"
-        compare = (lambda c, th: c < th) if kwargs["type"] == "Under" else (lambda c, th: c > th)
+        print("Calculating Apollo Ternary Results!")
         
-        gt, conf, pred = {}, {}, {}
-        print("Calculating Ternary Results!")
+        gt, under_conf, over_conf, under_pred, over_pred = {}, {}, {}, {}, {}
         
         for name in ["unlearn", "retain", "test"]:
             gt[name] = torch.cat([self.summary[name][i]["target_label"] for i in self.summary[name]], dim=0).cpu().numpy()
-            conf[name] = np.array([self.summary[name][i][f"{prefix}_conf"] for i in self.summary[name]])
-            pred[name] = np.array([self.summary[name][i][f"{prefix}_pred"] for i in self.summary[name]])
+            under_conf[name] = np.array([self.summary[name][i]["un_conf"] for i in self.summary[name]])
+            over_conf[name] = np.array([self.summary[name][i]["ov_conf"] for i in self.summary[name]])
+            under_pred[name] = np.array([self.summary[name][i]["un_pred"] for i in self.summary[name]])
+            over_pred[name] = np.array([self.summary[name][i]["ov_pred"] for i in self.summary[name]])
 
-        ths = np.unique(np.concatenate([conf["unlearn"], conf["retain"], conf["test"]]))
+        # Generate threshold combinations
+        under_ths = np.unique(np.concatenate([under_conf["unlearn"], under_conf["retain"], under_conf["test"]]))
+        over_ths = np.unique(np.concatenate([over_conf["unlearn"], over_conf["retain"], over_conf["test"]]))
+        
         ternary_points = []
+        threshold_pairs = []
         
-        for th in tqdm(ths):
-            # Classification results for each category
-            classifications = {"unlearn": 0, "retain": 0, "test": 0}
-            total_samples = 0
-            
-            for name in ["unlearn", "retain", "test"]:
-                idx = np.where(compare(conf[name], th), np.arange(self.args.atk_epochs), self.args.atk_epochs).min(axis=1)
-                idx[idx == self.args.atk_epochs] = (self.args.atk_epochs - 1)
-                pred_th = pred[name][np.arange(self.args.N), idx]
+        # Sample threshold combinations for efficiency
+        n_samples = min(50, len(under_ths) * len(over_ths))  # Limit combinations
+        under_sample = np.linspace(0, len(under_ths)-1, int(np.sqrt(n_samples)), dtype=int)
+        over_sample = np.linspace(0, len(over_ths)-1, int(np.sqrt(n_samples)), dtype=int)
+        
+        for u_idx in tqdm(under_sample):
+            for o_idx in over_sample:
+                under_th = under_ths[u_idx]
+                over_th = over_ths[o_idx]
                 
-                # Determine classification based on attack type and prediction accuracy
-                if kwargs["type"] == "Under":
-                    # Under-unlearning: wrong predictions indicate forgetting (unlearn class)
-                    forgotten_samples = np.sum(pred_th != gt[name])
-                    remembered_samples = np.sum(pred_th == gt[name])
-                    
-                    if name == "unlearn":
-                        classifications["unlearn"] += forgotten_samples  # Correctly forgotten
-                        classifications["retain"] += remembered_samples   # Still remembered (under-unlearning)
-                    elif name == "retain":
-                        classifications["test"] += forgotten_samples     # Over-unlearned (problematic)
-                        classifications["retain"] += remembered_samples  # Correctly retained
-                    else:  # test
-                        classifications["test"] += forgotten_samples + remembered_samples
+                # Classification counts
+                classifications = {"unlearn": 0, "retain": 0, "test": 0}
+                total_samples = 0
+                
+                for name in ["unlearn", "retain", "test"]:
+                    for i in range(self.args.N):
+                        if i >= len(under_conf[name]) or i >= len(over_conf[name]):
+                            continue
+                            
+                        # Get confidence values at optimal epochs
+                        under_idx = np.where(under_conf[name][i] < under_th, 
+                                           np.arange(self.args.atk_epochs), self.args.atk_epochs).min()
+                        over_idx = np.where(over_conf[name][i] > over_th, 
+                                          np.arange(self.args.atk_epochs), self.args.atk_epochs).min()
                         
-                else:  # Over-unlearning
-                    # Over-unlearning: correct predictions on unlearn = under-unlearning, wrong on retain = over-unlearning
-                    correct_samples = np.sum(pred_th == gt[name])
-                    wrong_samples = np.sum(pred_th != gt[name])
-                    
-                    if name == "unlearn":
-                        classifications["retain"] += correct_samples    # Under-unlearning (still remembered)
-                        classifications["unlearn"] += wrong_samples     # Properly forgotten
-                    elif name == "retain":
-                        classifications["retain"] += correct_samples   # Properly retained
-                        classifications["unlearn"] += wrong_samples    # Over-unlearned
-                    else:  # test
-                        classifications["test"] += correct_samples + wrong_samples
+                        under_idx = min(under_idx, self.args.atk_epochs - 1)
+                        over_idx = min(over_idx, self.args.atk_epochs - 1)
+                        
+                        under_triggered = under_conf[name][i][under_idx] < under_th
+                        over_triggered = over_conf[name][i][over_idx] > over_th
+                        
+                        under_pred_val = under_pred[name][i][under_idx]
+                        over_pred_val = over_pred[name][i][over_idx]
+                        true_label = gt[name][i]
+                        
+                        # Mutual exclusivity: prioritize by confidence strength
+                        under_strength = abs(under_conf[name][i][under_idx] - under_th) if under_triggered else 0
+                        over_strength = abs(over_conf[name][i][over_idx] - over_th) if over_triggered else 0
+                        
+                        if under_triggered and over_triggered:
+                            # Both triggered - choose stronger signal
+                            primary_under = under_strength > over_strength
+                        else:
+                            primary_under = under_triggered
+                            
+                        # Classification logic based on attack outcome
+                        if primary_under:
+                            # Under-unlearning detection: wrong prediction indicates forgetting
+                            is_forgotten = (under_pred_val != true_label)
+                            if name == "unlearn":
+                                if is_forgotten:
+                                    classifications["unlearn"] += 1  # Properly forgotten
+                                else:
+                                    classifications["retain"] += 1   # Under-unlearned (still remembered)
+                            elif name == "retain":
+                                if is_forgotten:
+                                    classifications["unlearn"] += 1  # Over-unlearned (wrongly forgotten)
+                                else:
+                                    classifications["retain"] += 1   # Properly retained
+                            else:  # test
+                                classifications["test"] += 1
+                        else:
+                            # Over-unlearning detection: correct prediction on unlearn = under-unlearning
+                            is_correct = (over_pred_val == true_label)
+                            if name == "unlearn":
+                                if is_correct:
+                                    classifications["retain"] += 1   # Under-unlearned (still correct)
+                                else:
+                                    classifications["unlearn"] += 1  # Properly forgotten
+                            elif name == "retain":
+                                if is_correct:
+                                    classifications["retain"] += 1   # Properly retained
+                                else:
+                                    classifications["unlearn"] += 1  # Over-unlearned (wrongly forgotten)
+                            else:  # test
+                                classifications["test"] += 1
+                        
+                        total_samples += 1
                 
-                total_samples += self.args.N
-            
-            # Convert to proportions for ternary plot
-            if total_samples > 0:
-                ternary_point = [
-                    classifications["unlearn"] / total_samples,
-                    classifications["retain"] / total_samples,
-                    classifications["test"] / total_samples
-                ]
-                ternary_points.append(ternary_point)
+                # Convert to proportions for ternary plot
+                if total_samples > 0:
+                    ternary_point = [
+                        classifications["unlearn"] / total_samples,
+                        classifications["retain"] / total_samples,
+                        classifications["test"] / total_samples
+                    ]
+                    ternary_points.append(ternary_point)
+                    threshold_pairs.append((under_th, over_th))
         
-        return np.array(ternary_points), ths
+        return np.array(ternary_points), np.array(threshold_pairs)
 
 class Apollo_Offline(Apollo):
     def __init__(self, target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
         Attack_Framework.__init__(self, target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args)
-        self.types = ["Under", "Over"]
+        self.types = ["Unified"]  # Single unified attack type
 
     def set_include_exclude(self, target_idx):
         Attack_Framework.set_include_exclude(self, target_idx)
@@ -187,6 +230,7 @@ class Apollo_Offline(Apollo):
         top2_vals, _ = outputs.topk(2, dim=-1)
         loss_db = top2_vals[0, :, 0] - top2_vals[0, :, 1]
         return self.args.w[0] * loss_db - self.args.w[1] * loss_rt
+    
     def batched_loss_Over(self, input, label):
         outputs = torch.vmap(
             lambda ps, bs, xx: functional_call(self.temp, ps, (xx,), {}, tie_weights=True, strict=False),
@@ -200,6 +244,8 @@ class Apollo_Offline(Apollo):
         top2_vals, _ = outputs.topk(2, dim=-1)
         loss_db = top2_vals[0, :, 0] - top2_vals[0, :, 1]
         return self.args.w[0] * loss_db + self.args.w[1] * loss_rt
+
+    # Inherit the unified get_ternary_results from parent Apollo class
 
 
 def batched_models_(models_list):
