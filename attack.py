@@ -157,11 +157,21 @@ def main():
     if (not os.path.exists(ternary_path)):
         os.makedirs(ternary_path)
     for type in Atk.types:
-        ternary_points, threshold_data = Atk.get_ternary_results(type=type)
-
-        ternary_data = {"ternary_points": ternary_points, "threshold_data": threshold_data}
+        results = Atk.get_ternary_results(type=type)
+        
+        # Handle different return formats (new comprehensive results vs old tuple format)
+        if isinstance(results, dict):
+            # New format with comprehensive results
+            ternary_data = results
+        else:
+            # Old format - convert to new format for compatibility
+            ternary_points, threshold_data = results
+            ternary_data = {"ternary_points": ternary_points, "threshold_data": threshold_data}
+        
         with open(os.path.join(ternary_path, f"{args.atk}-{unlearn_args.unlearn}-{type}.pkl"), "wb") as f:
             pkl.dump(ternary_data, f)
+        with open(os.path.join(ternary_path, f"{args.atk}-{unlearn_args.unlearn}-{type}-all-results.pkl"), "wb") as f:
+            pkl.dump(results, f)
 
 if __name__ == '__main__':
     main()

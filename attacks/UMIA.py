@@ -70,21 +70,36 @@ class UMIA(Attack_Framework):
                 all_probs.append(p[name][i])
         ths = np.unique(all_probs)
         ternary_points = []
+        tpr_results = []  # Store TPRs for each threshold
+        accuracy_results = []  # Store overall accuracy for each threshold
+        full_classifications = []  # Store full classification details
         
         for th in tqdm(ths):
             classifications = {"unlearn": 0, "retain": 0, "test": 0}
+            ground_truth_counts = {"unlearn": 0, "retain": 0, "test": 0}
+            correct_classifications = {"unlearn": 0, "retain": 0, "test": 0}
             total_samples = 0
             
             for name in ["unlearn", "retain", "test"]:
                 for i in self.summary[name]:
+                    ground_truth_counts[name] += 1
                     likelihood_ratio = p[name][i]
+                    
                     if likelihood_ratio > th:
+                        predicted_class = "unlearn"
                         classifications["unlearn"] += 1
                     else:
                         if name == "test":
+                            predicted_class = "test"
                             classifications["test"] += 1
                         else:
+                            predicted_class = "retain"
                             classifications["retain"] += 1
+                    
+                    # Track correct classifications for accuracy
+                    if predicted_class == name:
+                        correct_classifications[name] += 1
+                        
                     total_samples += 1
 
             if total_samples > 0:
@@ -94,8 +109,38 @@ class UMIA(Attack_Framework):
                     classifications["test"] / total_samples
                 ]
                 ternary_points.append(ternary_point)
+                
+                # Calculate TPRs for each class
+                tpr = {
+                    "unlearn": correct_classifications["unlearn"] / ground_truth_counts["unlearn"] if ground_truth_counts["unlearn"] > 0 else 0,
+                    "retain": correct_classifications["retain"] / ground_truth_counts["retain"] if ground_truth_counts["retain"] > 0 else 0,
+                    "test": correct_classifications["test"] / ground_truth_counts["test"] if ground_truth_counts["test"] > 0 else 0
+                }
+                tpr_results.append(tpr)
+                
+                # Calculate overall accuracy
+                total_correct = sum(correct_classifications.values())
+                overall_accuracy = total_correct / total_samples
+                accuracy_results.append(overall_accuracy)
+                
+                # Store full classification details
+                full_classifications.append({
+                    'classifications': classifications.copy(),
+                    'ground_truth_counts': ground_truth_counts.copy(),
+                    'correct_classifications': correct_classifications.copy(),
+                    'total_samples': total_samples,
+                    'tpr': tpr.copy(),
+                    'accuracy': overall_accuracy
+                })
         
-        return np.array(ternary_points), ths
+        results = {
+            'ternary_points': np.array(ternary_points),
+            'threshold_data': ths,
+            'tpr_results': tpr_results,
+            'accuracy_results': np.array(accuracy_results),
+            'full_classifications': full_classifications
+        }
+        return results
 
 def cat(A, B) -> torch.Tensor:
     if (A == None):

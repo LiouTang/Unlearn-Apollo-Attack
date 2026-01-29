@@ -54,15 +54,25 @@ def main():
                 points = np.array(attack_data['ternary_points']) * 100
                 # Reorder from (unlearn, retain, test) to (retain, test, unlearn) for (left, right, bottom) axes
                 points = points[:, [1, 2, 0]]
-                if len(attack_data['threshold_data'].shape) == 1:  #if threshold data is one-dimensional
-                    # ths = np.array(attack_data['threshold_data'])
-                    # ths changes to the ranking of ths
-                    ths = np.argsort(np.argsort(np.array(attack_data['threshold_data'])))
+                
+                # Use accuracy for transparency
+                if 'accuracy_results' in attack_data:
+                    # Use overall accuracy for transparency
+                    accuracy_vals = np.array(attack_data['accuracy_results'])
+                    alpha_vals = 0.2 + 0.8 * accuracy_vals  # Scale to 0.2-1.0 range
                 else:
-                    # second column divided by first column
-                    ths = np.array(attack_data['threshold_data'][:, 1]) / np.array(attack_data['threshold_data'][:, 0])
-                ths = (ths - ths.min()) / (ths.max() - ths.min())
-                tax.scatter(points, marker='o', c=color_map[atk], s=50, alpha=0.2 + 0.8 * ths, zorder=atk_zorder[atk])
+                    # Fallback to threshold-based transparency for compatibility
+                    if len(attack_data['threshold_data'].shape) == 1:  #if threshold data is one-dimensional
+                        # ths = np.array(attack_data['threshold_data'])
+                        # ths changes to the ranking of ths
+                        ths = np.argsort(np.argsort(np.array(attack_data['threshold_data'])))
+                    else:
+                        # second column divided by first column
+                        ths = np.array(attack_data['threshold_data'][:, 1]) / np.array(attack_data['threshold_data'][:, 0])
+                    ths = (ths - ths.min()) / (ths.max() - ths.min())
+                    alpha_vals = 0.2 + 0.8 * ths
+                    
+                tax.scatter(points, marker='o', c=color_map[atk], s=50, alpha=alpha_vals, zorder=atk_zorder[atk])
         
         # Optimal point: (retain, test, unlearn) = (33.33, 33.33, 33.33)
         optimal_point = (100/3, 100/3, 100/3)

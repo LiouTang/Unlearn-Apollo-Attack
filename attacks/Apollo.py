@@ -157,16 +157,22 @@ class Apollo(Attack_Framework):
         
         ternary_points = []
         threshold_pairs = []
+        tpr_results = []  # Store TPRs for each threshold pair
+        accuracy_results = []  # Store overall accuracy for each threshold pair
+        full_classifications = []  # Store full classification details
         
         for under_th in tqdm(under_ths):
             for over_th in over_ths:
-                # Classification counts
+                # Classification counts and ground truth tracking
                 classifications = {"unlearn": 0, "retain": 0, "test": 0}
+                ground_truth_counts = {"unlearn": 0, "retain": 0, "test": 0}
+                correct_classifications = {"unlearn": 0, "retain": 0, "test": 0}
                 total_samples = 0
                 
                 for name in ["unlearn", "retain", "test"]:
                     for i in range(len(under_conf[name])):
                         true_label = gt[name][i]
+                        ground_truth_counts[name] += 1
                         
                         # Apollo methodology: Find the epoch with maximum attack effectiveness
                         under_scores = []
@@ -210,11 +216,19 @@ class Apollo(Attack_Framework):
                         else:
                             # Neither attack successful - apply theoretical defaults
                             if name == "retain":
+                                predicted_class = "retain"
                                 classifications["retain"] += 1  # Default: under-unlearned
                             elif name == "test":
+                                predicted_class = "test"
                                 classifications["test"] += 1    # Default: over-unlearned baseline
                             else:  # unlearn
+                                predicted_class = "unlearn"
                                 classifications["unlearn"] += 1  # Default: properly unlearned
+                            
+                            # Track correct classifications for accuracy
+                            if predicted_class == name:
+                                correct_classifications[name] += 1
+                            
                             total_samples += 1
                             continue
                         
@@ -227,8 +241,10 @@ class Apollo(Attack_Framework):
                             # High confidence + correct prediction = retained (under-unlearned)
                             # High confidence + wrong prediction = over-unlearned side effect  
                             if is_correct and under_conf[name][i][epoch] > under_th:
+                                predicted_class = "retain"
                                 classifications["retain"] += 1
                             else:
+                                predicted_class = "unlearn"
                                 classifications["unlearn"] += 1
                                 
                         else:
@@ -239,10 +255,16 @@ class Apollo(Attack_Framework):
                             # Low confidence or wrong prediction = test baseline (over-unlearned)
                             # High confidence + correct = properly learned
                             if not is_correct or over_conf[name][i][epoch] < over_th:
+                                predicted_class = "test"
                                 classifications["test"] += 1
                             else:
+                                predicted_class = "unlearn"
                                 classifications["unlearn"] += 1
                         
+                        # Track correct classifications for accuracy
+                        if predicted_class == name:
+                            correct_classifications[name] += 1
+                            
                         total_samples += 1
                 
                 # Convert to proportions for ternary plot
@@ -254,8 +276,38 @@ class Apollo(Attack_Framework):
                     ]
                     ternary_points.append(ternary_point)
                     threshold_pairs.append((under_th, over_th))
+                    
+                    # Calculate TPRs for each class
+                    tpr = {
+                        "unlearn": correct_classifications["unlearn"] / ground_truth_counts["unlearn"] if ground_truth_counts["unlearn"] > 0 else 0,
+                        "retain": correct_classifications["retain"] / ground_truth_counts["retain"] if ground_truth_counts["retain"] > 0 else 0,
+                        "test": correct_classifications["test"] / ground_truth_counts["test"] if ground_truth_counts["test"] > 0 else 0
+                    }
+                    tpr_results.append(tpr)
+                    
+                    # Calculate overall accuracy
+                    total_correct = sum(correct_classifications.values())
+                    overall_accuracy = total_correct / total_samples
+                    accuracy_results.append(overall_accuracy)
+                    
+                    # Store full classification details
+                    full_classifications.append({
+                        'classifications': classifications.copy(),
+                        'ground_truth_counts': ground_truth_counts.copy(),
+                        'correct_classifications': correct_classifications.copy(),
+                        'total_samples': total_samples,
+                        'tpr': tpr.copy(),
+                        'accuracy': overall_accuracy
+                    })
         
-        return np.array(ternary_points), np.array(threshold_pairs)
+        results = {
+            'ternary_points': np.array(ternary_points),
+            'threshold_data': np.array(threshold_pairs),
+            'tpr_results': tpr_results,
+            'accuracy_results': np.array(accuracy_results),
+            'full_classifications': full_classifications
+        }
+        return results
 
 class Apollo_Offline(Apollo):
     def __init__(self, target_model, dataset, shadow_models, args, idxs, shadow_col, unlearn_args):
