@@ -20,99 +20,6 @@ from dataset import create_dataset
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def plot_ternary_results(ternary_points, threshold_data, title, path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-    
-    if len(ternary_points) == 0:
-        return
-        
-    # Create figure and axis with proper aspect ratio for equilateral triangle
-    fig, ax = plt.subplots(figsize=(12, 10))
-    
-    # Create ternary plot with proper scale
-    scale = 100  # Scale to percentages
-    tax = ternary.TernaryAxesSubplot(ax=ax, scale=scale)
-    
-    # Convert proportions to ternary coordinates (scale to 100)
-    ternary_data = []
-    for i, point in enumerate(ternary_points):
-        # Normalize to ensure sum = 1
-        total = np.sum(point)
-        if total > 0:
-            normalized_point = point / total
-            # Scale to 100 and convert to integers for ternary library
-            ternary_coord = tuple((normalized_point * scale).astype(int))
-            
-            # Use threshold ratio as color value for Apollo (over-threshold / under-threshold)
-            if hasattr(threshold_data[i], '__len__') and len(threshold_data[i]) == 2:
-                under_th, over_th = threshold_data[i][0], threshold_data[i][1]  # threshold_pairs are (under_th, over_th)
-                if abs(under_th) > 1e-8:  # Avoid division by zero
-                    color_val = over_th / under_th
-                else:
-                    color_val = over_th  # Fallback when under_th is near zero
-            else:
-                color_val = threshold_data[i] if i < len(threshold_data) else 0
-            
-            ternary_data.append((ternary_coord, color_val))
-    
-    if len(ternary_data) > 0:
-        # Separate coordinates and threshold values
-        coords, threshold_values = zip(*ternary_data)
-        
-        # Create scatter plot for data points
-        scatter = tax.scatter(coords, colormap='viridis', c=threshold_values, s=50, alpha=0.7, label='Attack Results')
-        
-        # Add colorbar for threshold ratios
-        cbar = plt.colorbar(scatter, ax=ax, shrink=0.8, aspect=20, pad=0.1)
-        # Determine colorbar label based on threshold data structure
-        if hasattr(threshold_data[0], '__len__') and len(threshold_data[0]) == 2:
-            cbar.set_label('Threshold Ratio (Over/Under)', rotation=270, labelpad=15, fontsize=10)
-        else:
-            cbar.set_label('Threshold Value', rotation=270, labelpad=15, fontsize=10)
-        
-        # Plot optimal reference point (ideal unlearning performance)
-        # Optimal: equal classification into each category (1/3, 1/3, 1/3)
-        optimal_point = (33, 33, 34)  # Scaled to 100, accounting for rounding
-        tax.scatter([optimal_point], marker='*', s=200, c='red', 
-                   label='Optimal Reference', edgecolors='black', linewidth=2, zorder=10)
-        
-        # Add colorbar for thresholds
-        tax.get_axes().set_title(title, pad=20)
-        
-        # Set labels for vertices (ternary library uses left, right, bottom order)
-        tax.left_axis_label("Test (%)", offset=0.16, fontsize=12)
-        tax.right_axis_label("Forgotten (Unlearned) (%)", offset=0.16, fontsize=12)  
-        tax.bottom_axis_label("Retained (%)", offset=-0.06, fontsize=12)
-        
-        # Add grid for better readability
-        tax.gridlines(multiple=10, color="gray", alpha=0.3, linewidth=0.5)
-        # tax.gridlines(multiple=25, color="gray", alpha=0.5, linewidth=1.0)
-        
-        # Draw boundary as equilateral triangle
-        tax.boundary(linewidth=2.0)
-        
-        # Add ticks with proper spacing
-        tax.ticks(axis='lbr', linewidth=1, multiple=20, fontsize=10)
-        
-        # Clear matplotlib default ticks to avoid overlap
-        tax.clear_matplotlib_ticks()
-        
-        # Ensure equal aspect ratio for regular triangle
-        ax.set_aspect('equal')
-        
-        # Add legend
-        ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1), fontsize=10)
-        
-        # Add annotation for optimal point
-        ax.text(0.02, 0.98, 'Red star (*) = Optimal unlearning\n(Equal classification: 33% each)', 
-                transform=ax.transAxes, fontsize=10, verticalalignment='top',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-        
-    plt.tight_layout()
-    plt.savefig(os.path.join(path, title + ".pdf"), bbox_inches='tight', dpi=300)
-    plt.close()
-    return
 
 def setminus(A, B):
     return np.array(list(set(A).difference(set(B))))
@@ -255,12 +162,6 @@ def main():
         ternary_data = {"ternary_points": ternary_points, "threshold_data": threshold_data}
         with open(os.path.join(ternary_path, f"{args.atk}-{unlearn_args.unlearn}-{type}.pkl"), "wb") as f:
             pkl.dump(ternary_data, f)
-
-        plot_ternary_results(
-            ternary_points, threshold_data,
-            f"{args.atk}-{unlearn_args.unlearn}-{type}",
-            os.path.join(base_path, "figs")
-        )
 
 if __name__ == '__main__':
     main()

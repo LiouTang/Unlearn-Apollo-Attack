@@ -32,7 +32,7 @@ class Retrain(UnlearnMethod):
         self.opt = 'adamw'
         self.momentum = 0.9
         self.weight_decay = 5e-4
-        self.lr = 1e-4
+        self.lr = 1e-3
         self.epochs = 25
         self.sched = 'cosine'
 
