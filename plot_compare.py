@@ -55,29 +55,13 @@ def main():
                 # Reorder from (unlearn, retain, test) to (retain, test, unlearn) for (left, right, bottom) axes
                 points = points[:, [1, 2, 0]]
                 
-                # Use accuracy for transparency
-                if 'accuracy_results' in attack_data:
-                    # Use overall accuracy for transparency
-                    accuracy_vals = np.array(attack_data['accuracy_results'])
-                    alpha_vals = 0.2 + 0.8 * accuracy_vals  # Scale to 0.2-1.0 range
-                else:
-                    # Fallback to threshold-based transparency for compatibility
-                    if len(attack_data['threshold_data'].shape) == 1:  #if threshold data is one-dimensional
-                        # ths = np.array(attack_data['threshold_data'])
-                        # ths changes to the ranking of ths
-                        ths = np.argsort(np.argsort(np.array(attack_data['threshold_data'])))
-                    else:
-                        # second column divided by first column
-                        ths = np.array(attack_data['threshold_data'][:, 1]) / np.array(attack_data['threshold_data'][:, 0])
-                    ths = (ths - ths.min()) / (ths.max() - ths.min())
-                    alpha_vals = 0.2 + 0.8 * ths
+                acc = np.array(attack_data['accuracy_results']) + 1e-8
+                alpha_vals = 0.1 + 0.8 * (acc ** 2)
                     
                 tax.scatter(points, marker='o', c=color_map[atk], s=50, alpha=alpha_vals, zorder=atk_zorder[atk])
         
-        # Optimal point: (retain, test, unlearn) = (33.33, 33.33, 33.33)
         optimal_point = (100/3, 100/3, 100/3)
-        tax.scatter([optimal_point], marker='^', s=150, c='firebrick',
-                    label='Optimal Reference\n(33% each)', zorder=10)
+        tax.scatter([optimal_point], marker='^', s=120, c='firebrick', label='Optimal Reference', zorder=10)
         
         # Add reference lines from vertices to optimal point
         # Lines from optimal point to each axis edge at the 100/3 mark
@@ -102,8 +86,7 @@ def main():
             ax.scatter([], [], c=color_map[atk], marker='o', alpha=1.0, s=50, label=atk_abbr_to_full[atk], zorder=atk_zorder[atk])
         ax.legend(loc='upper left', bbox_to_anchor=(0.02, 0.92), fontsize=10)
         # save to no padding on side
-        plt.savefig(os.path.join(base_path, "figs", "ternary", f"{un}.pdf"), bbox_inches='tight', pad_inches=0)
-
+        plt.savefig(os.path.join(base_path, "figs", f"{un}.pdf"), bbox_inches='tight', pad_inches=0)
 
 
 if __name__ == '__main__':
