@@ -33,37 +33,20 @@ class Apollo(Attack_Framework):
             )
 
 
-    def batched_loss(self, input, label):
-        loss_un, loss_rt = 0., 0.
-        if (len(self.include)):
-            loss_un = batched_loss_(input, label, self.temp_un, self.params_un, self.buffers_un)
-        if (len(self.exclude)):            
-            loss_rt = batched_loss_(input, label, self.temp_rt, self.params_rt, self.buffers_rt)
-        return  self.args.w[0] * loss_un - self.args.w[1] * loss_rt
     def batched_loss_Under(self, input, label):
-        # Under-unlearning detection: maximize loss on unlearned models, minimize on retained models
-        # This creates adversarial examples that expose under-unlearning (incomplete forgetting)
         loss_un, loss_rt = 0., 0.
         if (len(self.include)):
             loss_un = batched_loss_(input, label, self.temp_un, self.params_un, self.buffers_un)
         if (len(self.exclude)):            
             loss_rt = batched_loss_(input, label, self.temp_rt, self.params_rt, self.buffers_rt)
-        
-        # Theoretical formulation: maximize unlearned model loss (to trigger forgetting)
-        # while minimizing retained model loss (to maintain correct predictions)
         return self.args.w[0] * loss_un - self.args.w[1] * loss_rt
     
     def batched_loss_Over(self, input, label):
-        # Over-unlearning detection: minimize loss on both models to create inputs that
-        # should be correctly predicted, exposing over-unlearning (excessive forgetting)
         loss_un, loss_rt = 0., 0.
         if (len(self.include)):
             loss_un = batched_loss_(input, label, self.temp_un, self.params_un, self.buffers_un)
         if (len(self.exclude)):            
             loss_rt = batched_loss_(input, label, self.temp_rt, self.params_rt, self.buffers_rt)
-        
-        # Theoretical formulation: minimize both losses to create "easy" examples
-        # that reveal over-unlearning when target model still fails
         return -(self.args.w[0] * loss_un + self.args.w[1] * loss_rt)
 
     def Un_Adv(self, target_input: torch.Tensor, target_label: torch.Tensor, loss_func):
@@ -84,25 +67,18 @@ class Apollo(Attack_Framework):
             loss.backward()
             optimizer.step()
 
-            # Progressive perturbation bounds following Apollo methodology
             with torch.no_grad():
-                # Ensure perturbation stays within epsilon ball
                 delta = adv_input.data - target_input
                 delta = torch.clamp(delta, -self.args.eps, self.args.eps)
                 adv_input.data = target_input + delta
                 adv_input.data.clamp_(0.0, 1.0)
 
-            # Evaluate attack effectiveness
             with torch.no_grad():
                 target_output = self.target_model(adv_input)
                 target_pred = target_output.max(1)[1].item()
                 pred.append(target_pred)
-                
-                # Calculate confidence as log-likelihood ratio (Apollo methodology)
-                target_logit = target_output[0, target_label.item()].item()
-                target_conf.append(target_logit)
-                
-                # Shadow model confidence for membership inference
+                # target_logit = target_output[0, target_label.item()].item()
+                # target_conf.append(target_logit)
                 shadow_conf = 0.
                 if len(self.exclude) > 0:
                     for i in self.exclude:
@@ -110,10 +86,7 @@ class Apollo(Attack_Framework):
                         shadow_logit = shadow_output[0, target_label.item()].item()
                         shadow_conf += shadow_logit
                     shadow_conf /= len(self.exclude)
-                
-                # Confidence metric: difference between target and shadow model confidence
-                # Higher values indicate stronger membership signal
-                conf.append(target_logit - shadow_conf if len(self.exclude) > 0 else target_logit)
+                conf.append(-shadow_conf if len(self.exclude) > 0 else 0)
                 
         return conf, pred
 
@@ -345,8 +318,6 @@ class Apollo_Offline(Apollo):
         top2_vals, _ = outputs.topk(2, dim=-1)
         loss_db = top2_vals[0, :, 0] - top2_vals[0, :, 1]
         return self.args.w[0] * loss_db + self.args.w[1] * loss_rt
-
-    # Inherit the unified get_ternary_results from parent Apollo class
 
 
 def batched_models_(models_list):
